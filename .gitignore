@@ -1,0 +1,29 @@
+node_modules/
+dist/
+src-tauri/target/
+.npm-cache/
+.cargo-home/
+*.log
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Coverage output
+coverage/
+lcov.info
+*.profraw
+*.profdata
+tarpaulin-report.html
+
+# Local editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
