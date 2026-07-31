@@ -175,6 +175,13 @@ production codebase. See the
 [project constitution](.specify/memory/constitution.md) for the complete quality
 bar and exception policy.
 
+## License
+
+periScope is developed by [msugenius](https://github.com/msugenius) and
+distributed under the [MIT License](LICENSE). You may use, copy, modify, merge,
+publish, distribute, sublicense, and sell copies of the software, provided the
+copyright and license notice are retained.
+
 ## Contributing
 
 Issues and focused pull requests are welcome.
