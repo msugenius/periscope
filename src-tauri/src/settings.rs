@@ -1,21 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     #[serde(flatten)]
     pub crosshair: CrosshairSettings,
     #[serde(default)]
     pub hotkeys: HotkeySettings,
-}
-
-impl Default for AppSettings {
-    fn default() -> Self {
-        Self {
-            crosshair: CrosshairSettings::default(),
-            hotkeys: HotkeySettings::default(),
-        }
-    }
 }
 
 impl AppSettings {
@@ -138,10 +129,9 @@ fn canonical_key(value: &str) -> Result<String, String> {
     if let Some(number) = upper
         .strip_prefix('F')
         .and_then(|number| number.parse::<u8>().ok())
+        && (1..=24).contains(&number)
     {
-        if (1..=24).contains(&number) {
-            return Ok(format!("F{number}"));
-        }
+        return Ok(format!("F{number}"));
     }
 
     if upper.starts_with("KEY") && upper.len() == 4 && upper.as_bytes()[3].is_ascii_alphabetic() {

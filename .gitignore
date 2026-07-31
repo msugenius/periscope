@@ -1,9 +1,13 @@
 node_modules/
 dist/
+build/
 src-tauri/target/
 .npm-cache/
 .cargo-home/
 *.log
+*.tmp
+*.swp
+*.rs.bk
 
 # Environment and secrets
 .env
