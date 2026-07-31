@@ -63,6 +63,19 @@ Test-Case "greatest stable release filtering" {
     Assert-Equal (Assert-ReleaseVersion -Version "1.11.0" -Releases $releases -MigrationFloor "0.1.0") "v1.11.0"
 }
 
+Test-Case "GitHub pagination works without incompatible jq flags" {
+    $pages = '[[{"tag_name":"v1.9.0"}],[{"tag_name":"v1.10.0"}]]'
+    $releases = @(ConvertFrom-GitHubApiPages $pages)
+    Assert-Equal $releases.Count 2
+    Assert-Equal $releases[1].tag_name "v1.10.0"
+    Assert-Equal @(ConvertFrom-GitHubApiPages '[[]]').Count 0
+
+    $workflow = Get-Content (Join-Path $PSScriptRoot "..\..\.github\workflows\release.yml") -Raw
+    if ($workflow -match '--slurp[^\r\n]*--jq|--jq[^\r\n]*--slurp') {
+        throw "GitHub CLI does not support combining --slurp with --jq."
+    }
+}
+
 Test-Case "retry and conflict inspection" {
     $sha = "0123456789abcdef0123456789abcdef01234567"
     $matching = [pscustomobject]@{ tag_name = "v0.2.0"; draft = $true; prerelease = $false; target_commitish = $sha; assets = @() }
