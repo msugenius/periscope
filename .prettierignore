@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+coverage/
+src-tauri/target/
+src-tauri/gen/
+.npm-cache/
+.cargo-home/
+.git/
+.agents/
+.specify/
+specs/
+package-lock.json
+*.log
+*.profraw
+*.profdata

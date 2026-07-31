@@ -1,6 +1,7 @@
+use crate::hotkey_runtime::{KeyTransition, ShortcutDispatch};
 use crate::settings::HotkeySettings;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap},
     sync::Mutex,
 };
 use tauri::AppHandle;
@@ -22,9 +23,8 @@ struct RuntimeSnapshot {
 struct RuntimeState {
     configured: HotkeySettings,
     active: HashMap<u32, (HotkeyAction, Shortcut)>,
-    pressed: HashSet<u32>,
     errors: BTreeMap<String, String>,
-    recording: bool,
+    dispatch: ShortcutDispatch,
 }
 
 pub struct HotkeyController {
@@ -35,15 +35,24 @@ pub struct HotkeyRollback {
     snapshot: RuntimeSnapshot,
 }
 
+impl RuntimeSnapshot {
+    fn capture(state: &RuntimeState) -> Self {
+        Self {
+            configured: state.configured.clone(),
+            active: state.active.clone(),
+            errors: state.errors.clone(),
+        }
+    }
+}
+
 impl HotkeyController {
     pub fn new(configured: HotkeySettings) -> Self {
         Self {
             state: Mutex::new(RuntimeState {
                 configured,
                 active: HashMap::new(),
-                pressed: HashSet::new(),
                 errors: BTreeMap::new(),
-                recording: false,
+                dispatch: ShortcutDispatch::default(),
             }),
         }
     }
@@ -102,22 +111,18 @@ impl HotkeyController {
             .state
             .lock()
             .map_err(|_| "Hotkey state is unavailable.".to_string())?;
-        let snapshot = RuntimeSnapshot {
-            configured: state.configured.clone(),
-            active: state.active.clone(),
-            errors: state.errors.clone(),
-        };
-        let was_recording = state.recording;
-        state.recording = true;
+        let snapshot = RuntimeSnapshot::capture(&state);
+        let was_recording = state.dispatch.is_recording();
+        state.dispatch.set_recording(true);
 
         if let Err(error) =
             unregister_active(app, state.active.values().map(|(_, shortcut)| *shortcut))
         {
-            state.recording = was_recording;
+            state.dispatch.set_recording(was_recording);
             return Err(format!("Could not release the current hotkeys: {error}"));
         }
         state.active.clear();
-        state.pressed.clear();
+        state.dispatch.clear();
 
         let mut newly_registered = Vec::new();
         for (field, action, shortcut) in proposed_shortcuts {
@@ -132,7 +137,7 @@ impl HotkeyController {
                     state.configured = snapshot.configured;
                     state.active = rollback.active;
                     state.errors = snapshot.errors;
-                    state.recording = was_recording;
+                    state.dispatch.set_recording(was_recording);
                     if let Some(rollback_error) = rollback.error {
                         state
                             .errors
@@ -153,7 +158,7 @@ impl HotkeyController {
             .collect();
         state.configured = proposed.clone();
         state.errors.clear();
-        state.recording = was_recording;
+        state.dispatch.set_recording(was_recording);
         Ok((proposed, HotkeyRollback { snapshot }))
     }
 
@@ -167,7 +172,7 @@ impl HotkeyController {
         state.configured = rollback.snapshot.configured;
         state.active = restored.active;
         state.errors = rollback.snapshot.errors;
-        state.pressed.clear();
+        state.dispatch.clear();
         if let Some(error) = restored.error {
             state.errors.insert("configuration".into(), error.clone());
             return Err(error);
@@ -178,23 +183,20 @@ impl HotkeyController {
     pub fn handle_event(&self, shortcut: &Shortcut, event: ShortcutEvent) -> Option<HotkeyAction> {
         let mut state = self.state.lock().ok()?;
         let id = shortcut.id();
-        match event.state {
-            ShortcutState::Released => {
-                state.pressed.remove(&id);
-                None
-            }
-            ShortcutState::Pressed => {
-                if !state.pressed.insert(id) || state.recording {
-                    return None;
-                }
-                state.active.get(&id).map(|(action, _)| *action)
-            }
-        }
+        let transition = match event.state {
+            ShortcutState::Released => KeyTransition::Released,
+            ShortcutState::Pressed => KeyTransition::Pressed,
+        };
+        state
+            .dispatch
+            .transition(id, transition)
+            .then(|| state.active.get(&id).map(|(action, _)| *action))
+            .flatten()
     }
 
     pub fn set_recording(&self, recording: bool) {
         if let Ok(mut state) = self.state.lock() {
-            state.recording = recording;
+            state.dispatch.set_recording(recording);
         }
     }
 
@@ -285,5 +287,79 @@ fn action_label(action: HotkeyAction) -> &'static str {
     match action {
         HotkeyAction::CloseApp => "Close app",
         HotkeyAction::ShowSettings => "Show settings",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hotkey_runtime::{KeyTransition, ShortcutDispatch};
+
+    #[test]
+    fn parses_valid_shortcuts_and_reports_invalid_values() {
+        let parsed = parse_pair(&HotkeySettings {
+            close_app: "Control+F3".into(),
+            show_settings: "F4".into(),
+        })
+        .unwrap();
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].0, "closeApp");
+        assert_eq!(parsed[0].1, HotkeyAction::CloseApp);
+        assert!(parse_shortcut("Close app", "not-a-shortcut").is_err());
+    }
+
+    #[test]
+    fn validation_rejects_duplicate_and_conflicting_shortcuts() {
+        let conflict = HotkeySettings {
+            close_app: "Control+KeyQ".into(),
+            show_settings: "ctrl+q".into(),
+        };
+        assert!(conflict.validated().is_err());
+
+        let duplicate_modifier = HotkeySettings {
+            close_app: "Control+Control+KeyQ".into(),
+            show_settings: "F4".into(),
+        };
+        assert!(duplicate_modifier.validated().is_err());
+    }
+
+    #[test]
+    fn dispatch_suppresses_recording_and_deduplicates_press_release_cycles() {
+        let mut dispatch = ShortcutDispatch::default();
+        assert!(dispatch.transition(42, KeyTransition::Pressed));
+        assert!(!dispatch.transition(42, KeyTransition::Pressed));
+        assert!(!dispatch.transition(42, KeyTransition::Released));
+        assert!(dispatch.transition(42, KeyTransition::Pressed));
+
+        dispatch.set_recording(true);
+        assert!(!dispatch.transition(7, KeyTransition::Pressed));
+        dispatch.set_recording(false);
+        assert!(dispatch.transition(7, KeyTransition::Pressed));
+        dispatch.clear();
+        assert!(dispatch.transition(42, KeyTransition::Pressed));
+    }
+
+    #[test]
+    fn rollback_snapshot_is_isolated_from_later_runtime_mutation() {
+        let close = parse_shortcut("Close app", "F3").unwrap();
+        let state = RuntimeState {
+            configured: HotkeySettings::default(),
+            active: HashMap::from([(close.id(), (HotkeyAction::CloseApp, close))]),
+            errors: BTreeMap::from([("configuration".into(), "original".into())]),
+            dispatch: ShortcutDispatch::default(),
+        };
+        let snapshot = RuntimeSnapshot::capture(&state);
+
+        let mut changed = state;
+        changed.configured.close_app = "F5".into();
+        changed.active.clear();
+        changed.errors.clear();
+
+        assert_eq!(snapshot.configured.close_app, "F3");
+        assert_eq!(snapshot.active.len(), 1);
+        assert_eq!(
+            snapshot.errors.get("configuration").map(String::as_str),
+            Some("original")
+        );
     }
 }

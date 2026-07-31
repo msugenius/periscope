@@ -6,6 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css,scss,html}\" index.html vite.config.ts vitest.config.ts --no-error-on-unmatched-pattern && cargo fmt --manifest-path src-tauri/Cargo.toml",
+    "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx,css,scss,html}\" index.html vite.config.ts vitest.config.ts --no-error-on-unmatched-pattern && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
+    "lint": "npm run lint:frontend && npm run lint:rust",
+    "lint:frontend": "tsc --noEmit",
+    "lint:rust": "cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
+    "test": "vitest run && cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features",
+    "test:coverage": "npm run test:coverage:frontend && npm run test:coverage:rust",
+    "test:coverage:frontend": "vitest run --coverage",
+    "test:coverage:rust": "cargo llvm-cov --locked --manifest-path src-tauri/Cargo.toml --workspace --all-targets --all-features --ignore-filename-regex \"(main|lib|hotkeys|overlay)\\.rs$\" --fail-under-lines 80",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -13,8 +22,11 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",
+    "@vitest/coverage-v8": "4.1.10",
+    "jsdom": "30.0.1",
+    "prettier": "3.9.6",
     "typescript": "^7.0.2",
-    "vite": "^8.1.5"
+    "vite": "^8.1.5",
+    "vitest": "4.1.10"
   }
 }
-

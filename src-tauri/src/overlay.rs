@@ -4,6 +4,7 @@ use std::sync::{Arc, OnceLock, RwLock};
 #[cfg(windows)]
 mod platform {
     use super::*;
+    use crate::rasterizer::{OVERLAY_SIZE, rasterize};
     use std::{
         ffi::c_void,
         mem, ptr,
@@ -31,7 +32,6 @@ mod platform {
         },
     };
 
-    const OVERLAY_SIZE: i32 = 256;
     const WM_REDRAW_OVERLAY: u32 = WM_APP + 41;
     static SETTINGS: OnceLock<Arc<RwLock<CrosshairSettings>>> = OnceLock::new();
     static OVERLAY_HWND: AtomicIsize = AtomicIsize::new(0);
@@ -217,116 +217,6 @@ mod platform {
             let _ = HWND_TOPMOST;
         }
     }
-
-    fn rasterize(pixels: &mut [u32], settings: &CrosshairSettings) {
-        let center = OVERLAY_SIZE / 2;
-        let color = parse_color(&settings.color);
-        let outline_color = parse_color(&settings.outline_color);
-        let alpha = ((settings.opacity as u16 * 255) / 100) as u8;
-        let half = settings.thickness / 2;
-
-        let mut arms = vec![
-            (
-                center - settings.gap - settings.length,
-                center - half,
-                center - settings.gap,
-                center - half + settings.thickness,
-            ),
-            (
-                center + settings.gap,
-                center - half,
-                center + settings.gap + settings.length,
-                center - half + settings.thickness,
-            ),
-            (
-                center - half,
-                center + settings.gap,
-                center - half + settings.thickness,
-                center + settings.gap + settings.length,
-            ),
-        ];
-        if !settings.t_style {
-            arms.push((
-                center - half,
-                center - settings.gap - settings.length,
-                center - half + settings.thickness,
-                center - settings.gap,
-            ));
-        }
-
-        if settings.outline {
-            for &(left, top, right, bottom) in &arms {
-                fill_rect(
-                    pixels,
-                    left - settings.outline_thickness,
-                    top - settings.outline_thickness,
-                    right + settings.outline_thickness,
-                    bottom + settings.outline_thickness,
-                    outline_color,
-                    alpha,
-                );
-            }
-        }
-        for &(left, top, right, bottom) in &arms {
-            fill_rect(pixels, left, top, right, bottom, color, alpha);
-        }
-
-        if settings.center_dot {
-            let dot_half = settings.dot_size / 2;
-            if settings.outline {
-                let radius = dot_half + settings.outline_thickness;
-                fill_rect(
-                    pixels,
-                    center - radius,
-                    center - radius,
-                    center + radius + 1,
-                    center + radius + 1,
-                    outline_color,
-                    alpha,
-                );
-            }
-            fill_rect(
-                pixels,
-                center - dot_half,
-                center - dot_half,
-                center - dot_half + settings.dot_size,
-                center - dot_half + settings.dot_size,
-                color,
-                alpha,
-            );
-        }
-    }
-
-    fn fill_rect(
-        pixels: &mut [u32],
-        left: i32,
-        top: i32,
-        right: i32,
-        bottom: i32,
-        rgb: (u8, u8, u8),
-        alpha: u8,
-    ) {
-        let left = left.clamp(0, OVERLAY_SIZE);
-        let right = right.clamp(0, OVERLAY_SIZE);
-        let top = top.clamp(0, OVERLAY_SIZE);
-        let bottom = bottom.clamp(0, OVERLAY_SIZE);
-        let premultiply = |channel: u8| ((channel as u16 * alpha as u16) / 255) as u32;
-        let pixel = ((alpha as u32) << 24)
-            | (premultiply(rgb.0) << 16)
-            | (premultiply(rgb.1) << 8)
-            | premultiply(rgb.2);
-        for y in top..bottom {
-            let row = y as usize * OVERLAY_SIZE as usize;
-            for x in left..right {
-                pixels[row + x as usize] = pixel;
-            }
-        }
-    }
-
-    fn parse_color(value: &str) -> (u8, u8, u8) {
-        let parse = |range| u8::from_str_radix(&value[range], 16).unwrap_or(255);
-        (parse(1..3), parse(3..5), parse(5..7))
-    }
 }
 
 #[cfg(windows)]
@@ -342,4 +232,91 @@ impl OverlayController {
         Self
     }
     pub fn update(&self, _next: CrosshairSettings) {}
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        rasterizer::{OVERLAY_SIZE, rasterize},
+        settings::CrosshairSettings,
+    };
+
+    fn pixels() -> Vec<u32> {
+        vec![0; (OVERLAY_SIZE * OVERLAY_SIZE) as usize]
+    }
+
+    fn pixel(pixels: &[u32], x: i32, y: i32) -> u32 {
+        pixels[(y * OVERLAY_SIZE + x) as usize]
+    }
+
+    #[test]
+    fn rasterizes_fill_and_outline_at_exact_geometry_boundaries() {
+        let settings = CrosshairSettings {
+            center_dot: false,
+            ..CrosshairSettings::default()
+        };
+        let mut output = pixels();
+        rasterize(&mut output, &settings);
+
+        assert_eq!(pixel(&output, 100, 127), 0);
+        assert_eq!(pixel(&output, 101, 127), 0xff00_0000);
+        assert_eq!(pixel(&output, 102, 127), 0xff35_e8ff);
+        assert_eq!(pixel(&output, 121, 128), 0xff35_e8ff);
+        assert_eq!(pixel(&output, 122, 128), 0xff00_0000);
+        assert_eq!(pixel(&output, 123, 128), 0);
+    }
+
+    #[test]
+    fn t_style_removes_only_the_upper_arm() {
+        let settings = CrosshairSettings {
+            t_style: true,
+            center_dot: false,
+            outline: false,
+            ..CrosshairSettings::default()
+        };
+        let mut output = pixels();
+        rasterize(&mut output, &settings);
+
+        assert_eq!(pixel(&output, 128, 110), 0);
+        assert_eq!(pixel(&output, 128, 140), 0xff35_e8ff);
+    }
+
+    #[test]
+    fn premultiplies_transparency_and_falls_back_for_malformed_colors() {
+        let transparent = CrosshairSettings {
+            color: "#FF0000".into(),
+            opacity: 50,
+            outline: false,
+            ..CrosshairSettings::default()
+        };
+        let mut transparent_output = pixels();
+        rasterize(&mut transparent_output, &transparent);
+        assert_eq!(pixel(&transparent_output, 128, 128), 0x7f7f_0000);
+
+        let malformed = CrosshairSettings {
+            color: "bad".into(),
+            outline: false,
+            ..CrosshairSettings::default()
+        };
+        let mut malformed_output = pixels();
+        rasterize(&mut malformed_output, &malformed);
+        assert_eq!(pixel(&malformed_output, 128, 128), 0xffff_ffff);
+    }
+
+    #[test]
+    fn clips_rectangles_that_extend_beyond_the_pixel_buffer() {
+        let settings = CrosshairSettings {
+            length: 200,
+            gap: 0,
+            thickness: 4,
+            center_dot: false,
+            outline: false,
+            ..CrosshairSettings::default()
+        };
+        let mut output = pixels();
+        rasterize(&mut output, &settings);
+
+        assert_eq!(pixel(&output, 0, 128), 0xff35_e8ff);
+        assert_eq!(pixel(&output, 255, 128), 0xff35_e8ff);
+    }
 }

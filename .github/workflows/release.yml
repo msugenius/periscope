@@ -1,0 +1,417 @@
+name: Windows Release
+
+on:
+  pull_request:
+    branches:
+      - master
+    types:
+      - closed
+
+permissions: {}
+
+concurrency:
+  group: master-release
+  queue: max
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Windows installer
+    if: github.event.pull_request.merged == true
+    runs-on: windows-2025
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out exact merge commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Activate pinned Rust toolchain
+        run: rustup show
+
+      - name: Cache Cargo dependencies and build output
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            src-tauri/target
+          key: windows-release-rust-1.97-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            windows-release-rust-1.97-
+
+      - name: Install locked frontend dependencies
+        run: npm ci
+
+      - name: Remove cached installer outputs
+        shell: pwsh
+        run: |
+          $bundlePath = Resolve-Path "src-tauri/target" -ErrorAction SilentlyContinue
+          if ($bundlePath) {
+            $nsisPath = Join-Path $bundlePath "x86_64-pc-windows-msvc/release/bundle/nsis"
+            if (Test-Path -LiteralPath $nsisPath) {
+              Remove-Item -LiteralPath $nsisPath -Recurse -Force
+            }
+          }
+
+      - name: Build x64 NSIS installer
+        id: tauri
+        uses: tauri-apps/tauri-action@944946e3e4cac6603d1fe8f514171e9ecd3c78aa # v1
+        with:
+          args: --target x86_64-pc-windows-msvc --bundles nsis
+
+      - name: Create and verify release manifest
+        shell: pwsh
+        env:
+          TRUSTED_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          TRUSTED_REPOSITORY: ${{ github.repository }}
+          TRUSTED_PR_NUMBER: ${{ github.event.pull_request.number }}
+          TRUSTED_RUN_ID: ${{ github.run_id }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $sha = $env:TRUSTED_MERGE_SHA.ToLowerInvariant()
+          if ($sha -notmatch "^[0-9a-f]{40}$") {
+            throw "The merge SHA is not a full lowercase commit SHA."
+          }
+
+          $installers = @(
+            Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis" `
+              -Filter "*-setup.exe" -File -Recurse
+          )
+          if ($installers.Count -ne 1) {
+            throw "Expected exactly one NSIS setup executable; found $($installers.Count)."
+          }
+          $installer = $installers[0]
+          if ($installer.Length -le 0 -or $installer.Name -notmatch "_x64-setup\.exe$") {
+            throw "The NSIS installer is empty or does not identify the x64 setup bundle."
+          }
+
+          $applicationVersion = (
+            Get-Content "src-tauri/tauri.conf.json" -Raw | ConvertFrom-Json
+          ).version
+          if ([string]::IsNullOrWhiteSpace($applicationVersion)) {
+            throw "The application version is missing."
+          }
+
+          $handoff = New-Item "release-handoff" -ItemType Directory -Force
+          $copiedInstaller = Copy-Item -LiteralPath $installer.FullName `
+            -Destination (Join-Path $handoff $installer.Name) -PassThru
+          $digest = (Get-FileHash -LiteralPath $copiedInstaller.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $manifest = [ordered]@{
+            schemaVersion = "1"
+            repository = $env:TRUSTED_REPOSITORY
+            pullRequestNumber = [int]$env:TRUSTED_PR_NUMBER
+            mergeSha = $sha
+            applicationVersion = [string]$applicationVersion
+            artifactName = $copiedInstaller.Name
+            artifactSha256 = $digest
+            artifactSizeBytes = [long]$copiedInstaller.Length
+            builtAt = [DateTime]::UtcNow.ToString("o")
+            workflowRunId = [string]$env:TRUSTED_RUN_ID
+          }
+          $manifestPath = Join-Path $handoff "release-manifest.json"
+          $manifest | ConvertTo-Json | Set-Content -LiteralPath $manifestPath -Encoding utf8
+
+          $roundTrip = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+          if ($roundTrip.mergeSha -ne $sha -or $roundTrip.artifactSha256 -ne $digest) {
+            throw "The release manifest failed its build-side round-trip validation."
+          }
+
+      - name: Upload exact release handoff
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: windows-${{ github.event.pull_request.merge_commit_sha }}
+          path: |
+            release-handoff/*-setup.exe
+            release-handoff/release-manifest.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  publish:
+    name: Publish verified release
+    if: github.event.pull_request.merged == true
+    needs:
+      - build
+    runs-on: windows-2025
+    timeout-minutes: 20
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download exact release handoff
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: windows-${{ github.event.pull_request.merge_commit_sha }}
+          path: release-handoff
+
+      - name: Validate, create or resume, verify, and publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRUSTED_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          TRUSTED_REPOSITORY: ${{ github.repository }}
+          TRUSTED_PR_NUMBER: ${{ github.event.pull_request.number }}
+          TRUSTED_RUN_ID: ${{ github.run_id }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $false
+
+          function Assert-ReleaseAssets {
+            param(
+              [Parameter(Mandatory)] $Release,
+              [Parameter(Mandatory)] [System.IO.FileInfo] $Installer,
+              [Parameter(Mandatory)] [System.IO.FileInfo] $ManifestFile,
+              [Parameter(Mandatory)] [string] $InstallerDigest,
+              [Parameter(Mandatory)] [string] $ManifestDigest
+            )
+            $assets = @($Release.assets)
+            if ($assets.Count -ne 2) {
+              throw "Release asset conflict: expected exactly two assets, found $($assets.Count)."
+            }
+            $installerAsset = @($assets | Where-Object name -eq $Installer.Name)
+            $manifestAsset = @($assets | Where-Object name -eq $ManifestFile.Name)
+            if ($installerAsset.Count -ne 1 -or $manifestAsset.Count -ne 1) {
+              throw "Release asset conflict: installer or manifest is missing or duplicated."
+            }
+            if (
+              [long]$installerAsset[0].size -ne $Installer.Length -or
+              $installerAsset[0].digest -ne "sha256:$InstallerDigest"
+            ) {
+              throw "Release installer size or SHA-256 conflicts with the verified handoff."
+            }
+            if (
+              [long]$manifestAsset[0].size -ne $ManifestFile.Length -or
+              $manifestAsset[0].digest -ne "sha256:$ManifestDigest"
+            ) {
+              throw "Published manifest size or SHA-256 conflicts with the verified handoff."
+            }
+          }
+
+          $sha = $env:TRUSTED_MERGE_SHA.ToLowerInvariant()
+          if ($sha -notmatch "^[0-9a-f]{40}$") {
+            throw "The trusted merge SHA is not a full lowercase commit SHA."
+          }
+          $handoff = (Resolve-Path "release-handoff").Path
+          $files = @(Get-ChildItem -LiteralPath $handoff -File)
+          if ($files.Count -ne 2) {
+            throw "The handoff must contain exactly the installer and release manifest."
+          }
+          $manifestFiles = @($files | Where-Object Name -eq "release-manifest.json")
+          if ($manifestFiles.Count -ne 1) {
+            throw "The handoff does not contain exactly one release-manifest.json."
+          }
+          $manifestFile = $manifestFiles[0]
+          $manifest = Get-Content -LiteralPath $manifestFile.FullName -Raw | ConvertFrom-Json
+
+          if ($manifest.schemaVersion -ne "1") {
+            throw "Unsupported release manifest schema '$($manifest.schemaVersion)'."
+          }
+          if (
+            $manifest.repository -ne $env:TRUSTED_REPOSITORY -or
+            [int]$manifest.pullRequestNumber -ne [int]$env:TRUSTED_PR_NUMBER -or
+            $manifest.mergeSha -ne $sha -or
+            [string]$manifest.workflowRunId -ne [string]$env:TRUSTED_RUN_ID
+          ) {
+            throw "Release manifest identity does not match the trusted workflow context."
+          }
+          if (
+            $manifest.artifactName -ne [System.IO.Path]::GetFileName($manifest.artifactName) -or
+            $manifest.artifactName -notmatch "_x64-setup\.exe$"
+          ) {
+            throw "The manifest artifact name is not a safe x64 NSIS setup filename."
+          }
+          $installers = @($files | Where-Object Name -eq $manifest.artifactName)
+          if ($installers.Count -ne 1) {
+            throw "Exactly one downloaded installer must match the manifest artifact name."
+          }
+          $installer = $installers[0]
+          if ($installer.Length -le 0) {
+            throw "The downloaded installer is empty."
+          }
+          $installerDigest = (
+            Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256
+          ).Hash.ToLowerInvariant()
+          $manifestDigest = (
+            Get-FileHash -LiteralPath $manifestFile.FullName -Algorithm SHA256
+          ).Hash.ToLowerInvariant()
+          if (
+            $installerDigest -ne $manifest.artifactSha256 -or
+            [long]$installer.Length -ne [long]$manifest.artifactSizeBytes
+          ) {
+            throw "The downloaded installer digest or size does not match the manifest."
+          }
+
+          $repository = $env:TRUSTED_REPOSITORY
+          $tag = "release-$sha"
+          $title = "periScope $($manifest.applicationVersion) (PR #$($env:TRUSTED_PR_NUMBER), $($sha.Substring(0, 7)))"
+          $allReleasesJson = gh api --paginate --slurp `
+            "/repos/$repository/releases?per_page=100" --jq "flatten"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not inspect existing releases."
+          }
+          $allReleases = @($allReleasesJson | ConvertFrom-Json)
+          $matchingReleases = @($allReleases | Where-Object tag_name -eq $tag)
+          if ($matchingReleases.Count -gt 1) {
+            throw "Multiple releases unexpectedly use deterministic tag $tag."
+          }
+          $existing = $matchingReleases | Select-Object -First 1
+
+          $refsJson = gh api "/repos/$repository/git/matching-refs/tags/$tag"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not inspect the deterministic release tag."
+          }
+          $matchingRefs = @($refsJson | ConvertFrom-Json)
+          if ($matchingRefs.Count -gt 1) {
+            throw "Multiple tag references unexpectedly match $tag."
+          }
+          if ($matchingRefs.Count -eq 1 -and $matchingRefs[0].object.sha -ne $sha) {
+            throw "The deterministic tag already targets another object."
+          }
+          if (-not $existing -and $matchingRefs.Count -eq 1) {
+            throw "The deterministic tag exists without its release; refusing to assume ownership."
+          }
+          if ($existing -and $existing.target_commitish -ne $sha) {
+            throw "The existing release target conflicts with the trusted merge SHA."
+          }
+
+          if ($existing -and -not $existing.draft) {
+            Assert-ReleaseAssets $existing $installer $manifestFile `
+              $installerDigest $manifestDigest
+            Write-Host "Published release $tag is already complete and verified; no mutation required."
+            exit 0
+          }
+
+          $previous = @(
+            $allReleases |
+              Where-Object {
+                -not $_.draft -and
+                -not $_.prerelease -and
+                $_.tag_name -ne $tag -and
+                $_.published_at
+              } |
+              Sort-Object { [DateTime]$_.published_at } |
+              Select-Object -Last 1
+          )
+          $notesRequest = [ordered]@{
+            tag_name = $tag
+            target_commitish = $sha
+          }
+          if ($previous.Count -eq 1) {
+            $notesRequest.previous_tag_name = $previous[0].tag_name
+          }
+          $notesRequestPath = Join-Path $handoff "release-notes-request.json"
+          $notesRequest | ConvertTo-Json | Set-Content -LiteralPath $notesRequestPath -Encoding utf8
+          $generatedNotesJson = gh api --method POST `
+            "/repos/$repository/releases/generate-notes" --input $notesRequestPath
+          if ($LASTEXITCODE -ne 0) {
+            throw "GitHub could not generate release notes."
+          }
+          $generatedNotes = $generatedNotesJson | ConvertFrom-Json
+          if ($previous.Count -eq 1) {
+            $comparison = "https://github.com/$repository/compare/$($previous[0].tag_name)...$sha"
+          } else {
+            $comparison = "https://github.com/$repository/commits/$sha"
+          }
+          $notes = "$($generatedNotes.body)`n`n**Full changelog**: $comparison"
+
+          $releaseRequest = [ordered]@{
+            tag_name = $tag
+            target_commitish = $sha
+            name = $title
+            body = $notes
+            draft = $true
+            prerelease = $false
+          }
+          $releaseRequestPath = Join-Path $handoff "release-request.json"
+          $releaseRequest | ConvertTo-Json | Set-Content -LiteralPath $releaseRequestPath -Encoding utf8
+          if ($existing) {
+            $releaseJson = gh api --method PATCH `
+              "/repos/$repository/releases/$($existing.id)" --input $releaseRequestPath
+          } else {
+            $releaseJson = gh api --method POST `
+              "/repos/$repository/releases" --input $releaseRequestPath
+          }
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not create or resume the deterministic draft release."
+          }
+          $draft = $releaseJson | ConvertFrom-Json
+          if (-not $draft.draft -or $draft.tag_name -ne $tag -or $draft.target_commitish -ne $sha) {
+            throw "The draft release identity does not match the trusted merge."
+          }
+
+          $draftAssets = @($draft.assets)
+          $unexpectedAssets = @(
+            $draftAssets |
+              Where-Object name -notin @($installer.Name, $manifestFile.Name)
+          )
+          if ($unexpectedAssets.Count -gt 0) {
+            throw "The resumed draft contains unexpected assets."
+          }
+          $uploadPaths = @()
+          foreach ($assetSpec in @(
+            @{ File = $installer; Digest = $installerDigest },
+            @{ File = $manifestFile; Digest = $manifestDigest }
+          )) {
+            $matchingAssets = @(
+              $draftAssets | Where-Object name -eq $assetSpec.File.Name
+            )
+            if ($matchingAssets.Count -gt 1) {
+              throw "The draft contains duplicate asset '$($assetSpec.File.Name)'."
+            }
+            if ($matchingAssets.Count -eq 1) {
+              if (
+                [long]$matchingAssets[0].size -ne $assetSpec.File.Length -or
+                $matchingAssets[0].digest -ne "sha256:$($assetSpec.Digest)"
+              ) {
+                throw "Draft asset '$($assetSpec.File.Name)' conflicts with the verified handoff."
+              }
+            } else {
+              $uploadPaths += $assetSpec.File.FullName
+            }
+          }
+          if ($uploadPaths.Count -gt 0) {
+            & gh release upload $tag @uploadPaths --repo $repository
+            if ($LASTEXITCODE -ne 0) {
+              throw "Could not upload all missing draft assets."
+            }
+          }
+
+          $verifiedDraftJson = gh api "/repos/$repository/releases/tags/$tag"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not reload the draft for final verification."
+          }
+          $verifiedDraft = $verifiedDraftJson | ConvertFrom-Json
+          if (-not $verifiedDraft.draft -or $verifiedDraft.target_commitish -ne $sha) {
+            throw "Release identity changed before publication."
+          }
+          Assert-ReleaseAssets $verifiedDraft $installer $manifestFile `
+            $installerDigest $manifestDigest
+
+          gh release edit $tag --repo $repository --draft=false --latest
+          if ($LASTEXITCODE -ne 0) {
+            throw "All assets were verified, but the final publication step failed."
+          }
+
+          $publishedJson = gh api "/repos/$repository/releases/tags/$tag"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not verify the published release."
+          }
+          $published = $publishedJson | ConvertFrom-Json
+          if ($published.draft -or $published.target_commitish -ne $sha) {
+            throw "The release did not reach the expected published state."
+          }
+          Assert-ReleaseAssets $published $installer $manifestFile `
+            $installerDigest $manifestDigest
+          Write-Host "Published and verified $tag."
