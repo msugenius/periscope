@@ -11,7 +11,7 @@ native Win32 renderer and a polished Tauri settings experience.
 [![Tauri 2](https://img.shields.io/badge/Tauri-2-24C8D8?style=for-the-badge&logo=tauri&logoColor=white)](https://tauri.app/)
 [![Rust](https://img.shields.io/badge/Rust-2024-DEA584?style=for-the-badge&logo=rust&logoColor=black)](https://www.rust-lang.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Version](https://img.shields.io/badge/version-0.1.0-7C5CFF?style=for-the-badge)](https://github.com/msugenius/periscope)
+[![Version](https://img.shields.io/badge/version-0.2.0-7C5CFF?style=for-the-badge)](https://github.com/msugenius/periscope)
 
 </div>
 
@@ -38,6 +38,7 @@ continuous animation loop and no unnecessary idle work.
 | **Persistent settings**  | Changes save automatically to the user's application configuration directory                  |
 | **Global hotkeys**       | Configurable system-wide shortcuts with validation, conflict handling, and safe rollback      |
 | **Tray-first operation** | Hide Settings and release its WebView while the native overlay and tray process remain active |
+| **Signed updates**       | One stable release check per launch with explicit approve or dismiss controls                      |
 
 ## Quick start
 
@@ -194,19 +195,41 @@ should require the single stable `Quality / quality` check before merge.
 ### Windows releases
 
 A successfully merged pull request into `master` starts the `Windows Release`
-workflow. It checks out the merge commit by its exact SHA, builds one x64 NSIS
-installer, verifies a SHA-256 manifest, and publishes a deterministic release
-named `release-<full-merge-sha>` with GitHub-generated notes. Direct pushes and
-unmerged pull requests do not publish releases.
+workflow. Release-ready source must declare one strict stable `MAJOR.MINOR.PATCH`
+version consistently in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, the
+periScope entry in `src-tauri/Cargo.lock`, `package.json`, and the root entry in
+`package-lock.json`. The workflow checks out the exact merge SHA and refuses
+equal, lower, prerelease, build-suffixed, mismatched, or reused conflicting
+versions. The first SemVer release migrates from the `0.1.0` floor to `0.2.0`.
 
-Download the `*_x64-setup.exe` asset from the matching GitHub release. The
-installer is currently unsigned, so Windows SmartScreen may show an
-unrecognized-publisher warning. Confirm the release and manifest before
-continuing.
+The protected GitHub `release` environment must contain
+`TAURI_SIGNING_PRIVATE_KEY` and, when the key is encrypted,
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The long-lived private key and password
+must stay in the release environment and the maintainers' protected recovery
+storage; never commit them, upload them as workflow artifacts, or print them.
+Only the matching public key belongs in `src-tauri/tauri.conf.json`. If the
+private key is lost, existing clients cannot trust releases signed with a new
+key, so recovery must restore the original key or use a separately planned key
+rotation release.
 
-Rerunning a completed release is safe: a matching published release and assets
-produce a no-op success. An interrupted matching draft is resumed. Conflicting
-tags, targets, or asset digests fail without replacing the published files.
+Each successful run publishes `vMAJOR.MINOR.PATCH` with exactly four verified
+assets: the versioned x64 NSIS installer, its `.sig`, `latest.json`, and
+`release-manifest.json`. The updater metadata points to the immutable versioned
+installer URL and embeds the literal signature. The release stays draft until
+all identities, sizes, SHA-256 digests, and the exact merge target agree; it is
+then published as the latest stable release. Clients check that stable endpoint
+once per process, offer only a newer compatible version, and install only the
+exact candidate the user approved.
+
+Download the `*_x64-setup.exe` asset from the matching GitHub release. Updater
+signatures protect automatic replacement, but the installer is not currently
+Authenticode-signed, so Windows SmartScreen may show an unrecognized-publisher
+warning. Confirm the release and manifest before continuing.
+
+Rerunning a completed release is safe: a matching published release and all
+four assets produce an early verified no-op. An interrupted matching draft is
+resumed only when existing assets are absent or byte-identical. Conflicting
+tags, targets, unexpected assets, or digests fail without replacement.
 
 ## Engineering principles
 

@@ -57,6 +57,10 @@ jobs:
       - name: Install locked frontend dependencies
         run: npm ci
 
+      - name: Validate release rules and version agreement
+        shell: pwsh
+        run: ./scripts/release/Test-ReleasePipeline.ps1
+
       - name: Check formatting
         run: npm run format:check
 

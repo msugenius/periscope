@@ -9,6 +9,7 @@ import {
   type HotkeySettings,
   type Settings,
 } from "./ui-model";
+import { connectUpdater, renderCurrentUpdate } from "./update-ui";
 
 type SettingsPage = "crosshair" | "hotkeys";
 
@@ -198,7 +199,7 @@ function renderShell() {
           </nav>
         </aside>
 
-        <section class="content">${currentPage === "crosshair" ? renderCrosshairPage() : renderHotkeysPage()}</section>
+        <section class="content"><section id="update-status" hidden></section>${currentPage === "crosshair" ? renderCrosshairPage() : renderHotkeysPage()}</section>
       </div>
 
       <footer>
@@ -209,6 +210,7 @@ function renderShell() {
 
   bindEvents();
   drawPreview();
+  renderCurrentUpdate(document.querySelector<HTMLElement>("#update-status")!);
 }
 
 function bindEvents() {
@@ -559,7 +561,17 @@ export async function boot() {
   };
   appWindow.__periScopeCleanup?.();
   const events = new AbortController();
-  appWindow.__periScopeCleanup = () => events.abort();
+  let updaterCleanup: (() => void) | undefined;
+  appWindow.__periScopeCleanup = () => {
+    events.abort();
+    updaterCleanup?.();
+  };
+  void connectUpdater(
+    document.querySelector<HTMLElement>("#update-status")!,
+  ).then((cleanup) => {
+    if (events.signal.aborted) cleanup();
+    else updaterCleanup = cleanup;
+  });
   window.addEventListener("resize", drawPreview, { signal: events.signal });
   window.addEventListener("keydown", handleRecordingKeyDown, {
     capture: true,

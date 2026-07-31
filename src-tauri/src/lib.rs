@@ -4,6 +4,7 @@ mod overlay;
 mod persistence;
 mod rasterizer;
 mod settings;
+mod updater;
 
 use hotkeys::{HotkeyAction, HotkeyController};
 use overlay::OverlayController;
@@ -23,6 +24,7 @@ use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
+use updater::UpdaterState;
 
 struct AppState {
     settings: Mutex<AppSettings>,
@@ -232,6 +234,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -248,6 +251,7 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            app.manage(UpdaterState::new(&app.package_info().version.to_string()));
             let settings_path = app
                 .path()
                 .app_config_dir()
@@ -278,7 +282,11 @@ pub fn run() {
             reset_hotkeys,
             set_hotkey_recording,
             hide_settings,
-            minimize_settings
+            minimize_settings,
+            updater::get_update_status,
+            updater::start_update_check,
+            updater::dismiss_update,
+            updater::install_update
         ])
         .on_window_event(|window, event| {
             if window.label() == "main"
