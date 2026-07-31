@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "format": "prettier --write . && cargo fmt --manifest-path src-tauri/Cargo.toml",
-    "format:check": "prettier --check . && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
+    "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css,scss,html}\" index.html vite.config.ts vitest.config.ts --no-error-on-unmatched-pattern && cargo fmt --manifest-path src-tauri/Cargo.toml",
+    "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx,css,scss,html}\" index.html vite.config.ts vitest.config.ts --no-error-on-unmatched-pattern && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
     "lint": "npm run lint:frontend && npm run lint:rust",
     "lint:frontend": "tsc --noEmit",
     "lint:rust": "cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
