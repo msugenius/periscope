@@ -1,14 +1,18 @@
+mod hotkey_runtime;
 mod hotkeys;
 mod overlay;
+mod persistence;
+mod rasterizer;
 mod settings;
+mod updater;
 
 use hotkeys::{HotkeyAction, HotkeyController};
 use overlay::OverlayController;
+use persistence::{load_settings, persist_settings};
 use serde::Serialize;
 use settings::{AppSettings, CrosshairSettings, HotkeySettings};
 use std::{
     collections::BTreeMap,
-    fs,
     path::PathBuf,
     sync::{
         Mutex,
@@ -20,6 +24,7 @@ use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
+use updater::UpdaterState;
 
 struct AppState {
     settings: Mutex<AppSettings>,
@@ -136,22 +141,6 @@ fn minimize_settings(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn persist_settings(path: &PathBuf, settings: &AppSettings) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-    let json = serde_json::to_string_pretty(settings).map_err(|error| error.to_string())?;
-    fs::write(path, json).map_err(|error| error.to_string())
-}
-
-fn load_settings(path: &PathBuf) -> AppSettings {
-    fs::read_to_string(path)
-        .ok()
-        .and_then(|json| serde_json::from_str::<AppSettings>(&json).ok())
-        .unwrap_or_default()
-        .validated()
-}
-
 fn show_settings(app: &AppHandle) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window("main") {
         window.show()?;
@@ -245,6 +234,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -261,6 +251,7 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            app.manage(UpdaterState::new(&app.package_info().version.to_string()));
             let settings_path = app
                 .path()
                 .app_config_dir()
@@ -291,15 +282,19 @@ pub fn run() {
             reset_hotkeys,
             set_hotkey_recording,
             hide_settings,
-            minimize_settings
+            minimize_settings,
+            updater::get_update_status,
+            updater::start_update_check,
+            updater::dismiss_update,
+            updater::install_update
         ])
         .on_window_event(|window, event| {
-            if window.label() == "main" {
-                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    window.state::<AppState>().hotkeys.set_recording(false);
-                    let _ = window.destroy();
-                }
+            if window.label() == "main"
+                && let tauri::WindowEvent::CloseRequested { api, .. } = event
+            {
+                api.prevent_close();
+                window.state::<AppState>().hotkeys.set_recording(false);
+                let _ = window.destroy();
             }
         })
         .build(tauri::generate_context!())
@@ -312,4 +307,72 @@ pub fn run() {
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{load_settings, persist_settings};
+    use crate::settings::AppSettings;
+    use std::{
+        fs,
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    fn test_directory(label: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("periscope-{label}-{}-{nonce}", std::process::id()))
+    }
+
+    #[test]
+    fn missing_and_malformed_settings_load_defaults() {
+        let directory = test_directory("load-defaults");
+        let path = directory.join("settings.json");
+        assert_eq!(load_settings(&path).hotkeys.close_app, "F3");
+
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(&path, "{ definitely not json").unwrap();
+        let recovered = load_settings(&path);
+        assert_eq!(recovered.crosshair.length, 20);
+        assert_eq!(recovered.hotkeys.show_settings, "F4");
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn atomic_persistence_replaces_existing_settings_and_round_trips() {
+        let directory = test_directory("roundtrip");
+        let path = directory.join("settings.json");
+        let mut settings = AppSettings::default();
+        persist_settings(&path, &settings).unwrap();
+
+        settings.crosshair.length = 37;
+        settings.hotkeys.close_app = "Control+F3".into();
+        persist_settings(&path, &settings).unwrap();
+        let loaded = load_settings(&path);
+
+        assert_eq!(loaded.crosshair.length, 37);
+        assert_eq!(loaded.hotkeys.close_app, "Control+F3");
+        assert!(
+            fs::read_to_string(&path)
+                .unwrap()
+                .contains("\"length\": 37")
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn persistence_errors_do_not_replace_the_destination() {
+        let directory = test_directory("persist-error");
+        let destination = directory.join("settings.json");
+        fs::create_dir_all(&destination).unwrap();
+
+        let result = persist_settings(&destination, &AppSettings::default());
+
+        assert!(result.is_err());
+        assert!(destination.is_dir());
+        fs::remove_dir_all(directory).unwrap();
+    }
 }
