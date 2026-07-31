@@ -1,6 +1,6 @@
 [package]
 name = "periscope"
-version = "0.1.0"
+version = "0.2.0"
 description = "A lightweight native crosshair overlay for Windows"
 authors = ["periScope contributors"]
 edition = "2024"
@@ -19,6 +19,7 @@ tauri = { version = "2", features = ["tray-icon"] }
 
 [target.'cfg(windows)'.dependencies]
 tauri-plugin-global-shortcut = "2"
+tauri-plugin-updater = "2"
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_Graphics_Gdi",
