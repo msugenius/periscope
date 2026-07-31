@@ -152,6 +152,24 @@ periScope/
 | `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` | Check Rust formatting |
 | `npm run tauri build` | Build release installers |
 
+### Git flow
+
+All changes must move through the following branch promotion path:
+
+```text
+working branch → dev → master
+```
+
+1. Create each feature, fix, or maintenance branch from `dev`.
+2. Open a pull request from the working branch into `dev`.
+3. Merge into `dev` only after the required build, formatting, and test checks
+   pass.
+4. Promote tested changes by opening a separate pull request from `dev` into
+   `master`.
+
+`dev` is the integration branch and `master` is the stable release branch.
+Working branches must not be merged directly into `master`.
+
 Before opening a pull request, run:
 
 ```powershell
@@ -193,6 +211,7 @@ Issues and focused pull requests are welcome.
 4. Run the build, formatting, and test checks above.
 5. Explain any new dependency, background work, or additional architectural
    complexity in the pull request.
+6. Follow the required working branch → `dev` → `master` Git flow.
 
 <div align="center">
 
