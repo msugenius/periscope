@@ -70,8 +70,9 @@ jobs:
           Import-Module ./scripts/release/ReleasePipeline.psm1 -Force
           $version = Assert-VersionAgreement (Get-VersionDeclarations $PWD)
           $sha = $env:TRUSTED_MERGE_SHA.ToLowerInvariant()
-          $releases = @(gh api --paginate --slurp "/repos/$env:TRUSTED_REPOSITORY/releases?per_page=100" --jq flatten | ConvertFrom-Json)
+          $releasePagesJson = gh api --paginate --slurp "/repos/$env:TRUSTED_REPOSITORY/releases?per_page=100"
           if ($LASTEXITCODE -ne 0) { throw "Could not inspect existing releases." }
+          $releases = @(ConvertFrom-GitHubApiPages $releasePagesJson)
           $disposition = Get-ReleaseDisposition -Version $version -MergeSha $sha -Releases $releases
           $refs = @(gh api "/repos/$env:TRUSTED_REPOSITORY/git/matching-refs/tags/$($disposition.Tag)" | ConvertFrom-Json)
           if ($LASTEXITCODE -ne 0 -or $refs.Count -gt 1) { throw "Could not establish one deterministic tag state." }
@@ -211,8 +212,9 @@ jobs:
           Assert-Evidence $handoff.installer $installer
           Assert-Evidence $handoff.signature $signature
 
-          $all = @(gh api --paginate --slurp "/repos/$env:TRUSTED_REPOSITORY/releases?per_page=100" --jq flatten | ConvertFrom-Json)
+          $releasePagesJson = gh api --paginate --slurp "/repos/$env:TRUSTED_REPOSITORY/releases?per_page=100"
           if ($LASTEXITCODE -ne 0) { throw "Could not inspect release state." }
+          $all = @(($releasePagesJson | ConvertFrom-Json) | ForEach-Object { $_ })
           $existing = @($all | Where-Object tag_name -eq $env:RELEASE_TAG)
           if ($existing.Count -gt 1 -or ($existing.Count -eq 1 -and $existing[0].target_commitish -cne $sha)) { throw "Release tag or target conflict." }
           if ($existing.Count -eq 1 -and -not $existing[0].draft) { throw "Published release appeared after early inspection; rerun for verified no-op." }
