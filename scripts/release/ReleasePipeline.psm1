@@ -98,6 +98,16 @@ function Get-StableReleases {
     })
 }
 
+function ConvertFrom-GitHubApiPages {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][AllowEmptyString()][string[]] $Json)
+
+    $raw = $Json -join [Environment]::NewLine
+    if ([string]::IsNullOrWhiteSpace($raw)) { return }
+    $pages = $raw | ConvertFrom-Json
+    @($pages | ForEach-Object { $_ })
+}
+
 function Get-GreatestStableRelease {
     [CmdletBinding()]
     param([Parameter(Mandatory)][AllowEmptyCollection()][object[]] $Releases)
@@ -287,7 +297,7 @@ function Test-PublicReleaseManifest {
 
 Export-ModuleMember -Function @(
     'ConvertTo-StableSemVer', 'Compare-StableSemVer', 'Get-VersionDeclarations',
-    'Assert-VersionAgreement', 'Get-StableReleases', 'Get-GreatestStableRelease',
+    'Assert-VersionAgreement', 'ConvertFrom-GitHubApiPages', 'Get-StableReleases', 'Get-GreatestStableRelease',
     'Assert-ReleaseVersion', 'Get-ReleaseDisposition', 'Get-FileEvidence',
     'New-ReleaseHandoff', 'Test-ReleaseHandoff', 'New-UpdaterMetadata',
     'New-PublicReleaseManifest', 'Test-PublicReleaseManifest'
