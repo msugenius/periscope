@@ -76,6 +76,23 @@ Test-Case "GitHub pagination works without incompatible jq flags" {
     }
 }
 
+Test-Case "draft releases are verified by immutable release id" {
+    $workflow = Get-Content (Join-Path $PSScriptRoot "..\..\.github\workflows\release.yml") -Raw
+    if ($workflow.Contains('gh api "/repos/$env:TRUSTED_REPOSITORY/releases/tags/$env:RELEASE_TAG"')) {
+        throw "Draft releases cannot be read reliably through the release-by-tag endpoint."
+    }
+
+    foreach ($required in @(
+        '$draft = gh api "/repos/$env:TRUSTED_REPOSITORY/releases/$($draftMatches[0].id)"',
+        '$verified = gh api "/repos/$env:TRUSTED_REPOSITORY/releases/$($draft.id)"',
+        '$published = gh api "/repos/$env:TRUSTED_REPOSITORY/releases/$($draft.id)"'
+    )) {
+        if (-not $workflow.Contains($required)) {
+            throw "Release workflow is missing the required ID-based lookup: $required"
+        }
+    }
+}
+
 Test-Case "retry and conflict inspection" {
     $sha = "0123456789abcdef0123456789abcdef01234567"
     $matching = [pscustomobject]@{ tag_name = "v0.2.0"; draft = $true; prerelease = $false; target_commitish = $sha; assets = @() }
