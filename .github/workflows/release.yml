@@ -250,7 +250,11 @@ jobs:
             gh release edit $env:RELEASE_TAG --repo $env:TRUSTED_REPOSITORY --target $sha --title $title --notes-file "$root/release-notes.md" --draft
           }
           if ($LASTEXITCODE -ne 0) { throw "Could not create or resume the draft release." }
-          $draft = gh api "/repos/$env:TRUSTED_REPOSITORY/releases/tags/$env:RELEASE_TAG" | ConvertFrom-Json
+          $releasePagesJson = gh api --paginate --slurp "/repos/$env:TRUSTED_REPOSITORY/releases?per_page=100"
+          if ($LASTEXITCODE -ne 0) { throw "Could not refresh draft release state." }
+          $draftMatches = @((($releasePagesJson | ConvertFrom-Json) | ForEach-Object { $_ }) | Where-Object tag_name -eq $env:RELEASE_TAG)
+          if ($draftMatches.Count -ne 1) { throw "Could not establish one deterministic draft release." }
+          $draft = gh api "/repos/$env:TRUSTED_REPOSITORY/releases/$($draftMatches[0].id)" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or -not $draft.draft -or $draft.target_commitish -cne $sha) { throw "Draft identity verification failed." }
           $unexpected = @($draft.assets | Where-Object name -notin $publicFiles.Name)
           if ($unexpected.Count -gt 0) { throw "Draft contains unexpected assets." }
@@ -265,11 +269,13 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw "Could not upload $($file.Name)." }
             }
           }
-          $verified = gh api "/repos/$env:TRUSTED_REPOSITORY/releases/tags/$env:RELEASE_TAG" | ConvertFrom-Json
+          $verified = gh api "/repos/$env:TRUSTED_REPOSITORY/releases/$($draft.id)" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "Could not verify uploaded draft assets." }
           Assert-Assets $verified $publicFiles
           gh release edit $env:RELEASE_TAG --repo $env:TRUSTED_REPOSITORY --draft=false --latest
           if ($LASTEXITCODE -ne 0) { throw "Final publish/latest mutation failed." }
-          $published = gh api "/repos/$env:TRUSTED_REPOSITORY/releases/tags/$env:RELEASE_TAG" | ConvertFrom-Json
+          $published = gh api "/repos/$env:TRUSTED_REPOSITORY/releases/$($draft.id)" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "Could not verify the published release." }
           $currentLatest = gh api "/repos/$env:TRUSTED_REPOSITORY/releases/latest" | ConvertFrom-Json
           if ($published.draft -or $published.prerelease -or $published.target_commitish -cne $sha -or $currentLatest.id -ne $published.id) { throw "Published/latest state verification failed." }
           Assert-Assets $published $publicFiles
