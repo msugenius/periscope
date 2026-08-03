@@ -45,7 +45,7 @@ Test-Case "five declaration agreement" {
     $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
     $versions = Get-VersionDeclarations -Root $root
     Assert-Equal $versions.Count 5
-    Assert-Equal (Assert-VersionAgreement -Declarations $versions) "0.2.0"
+    Assert-Equal (Assert-VersionAgreement -Declarations $versions) "0.2.1"
     $versions["package.json"] = "0.3.0"
     Assert-Throws { Assert-VersionAgreement -Declarations $versions }
 }
