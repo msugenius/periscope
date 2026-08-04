@@ -258,12 +258,12 @@ mod tests {
         let mut output = pixels();
         rasterize(&mut output, &settings);
 
-        assert_eq!(pixel(&output, 100, 127), 0);
-        assert_eq!(pixel(&output, 101, 127), 0xff00_0000);
-        assert_eq!(pixel(&output, 102, 127), 0xff35_e8ff);
-        assert_eq!(pixel(&output, 121, 128), 0xff35_e8ff);
-        assert_eq!(pixel(&output, 122, 128), 0xff00_0000);
-        assert_eq!(pixel(&output, 123, 128), 0);
+        assert_eq!(pixel(&output, 113, 128), 0);
+        assert_eq!(pixel(&output, 114, 128), 0xff00_0000);
+        assert_eq!(pixel(&output, 115, 128), 0xff35_e8ff);
+        assert_eq!(pixel(&output, 124, 128), 0xff35_e8ff);
+        assert_eq!(pixel(&output, 125, 128), 0xff00_0000);
+        assert_eq!(pixel(&output, 126, 128), 0);
     }
 
     #[test]

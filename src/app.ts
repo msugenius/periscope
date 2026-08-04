@@ -17,11 +17,11 @@ const defaults: Settings = {
   enabled: true,
   color: "#35E8FF",
   opacity: 100,
-  length: 20,
-  thickness: 2,
-  gap: 6,
+  length: 10,
+  thickness: 1,
+  gap: 3,
   centerDot: true,
-  dotSize: 3,
+  dotSize: 2,
   tStyle: false,
   outline: true,
   outlineThickness: 1,
@@ -102,7 +102,7 @@ function renderCrosshairPage() {
           <button class="preset" data-preset="compact"><span class="mini-cross compact"></span><small>Compact</small></button>
           <button class="preset" data-preset="dot"><span class="mini-dot"></span><small>Dot</small></button>
           <button class="preset" data-preset="open"><span class="mini-cross open"></span><small>Open</small></button>
-          <button class="preset" data-preset="precision"><span class="mini-cross precision"></span><small>Precision</small></button>
+          <button class="preset" data-preset="precision"><span class="mini-cross t-shape"></span><small>T-Shape</small></button>
         </div>
       </section>
 
@@ -183,7 +183,7 @@ function renderShell() {
         <div class="brand" data-tauri-drag-region>
           <span class="brand-mark">${icon("crosshair")}</span>
           <span>periScope</span>
-          <span class="status"><i></i> overlay active</span>
+          <button id="update-status" class="status" type="button" hidden></button>
         </div>
         <div class="window-actions">
           <button id="minimize" aria-label="Minimize">${icon("minus")}</button>
@@ -199,7 +199,7 @@ function renderShell() {
           </nav>
         </aside>
 
-        <section class="content"><section id="update-status" hidden></section>${currentPage === "crosshair" ? renderCrosshairPage() : renderHotkeysPage()}</section>
+        <section class="content">${currentPage === "crosshair" ? renderCrosshairPage() : renderHotkeysPage()}</section>
       </div>
 
       <footer>
@@ -414,17 +414,17 @@ function updateFromInput(input: HTMLInputElement) {
 function applyPreset(preset: string) {
   const presets: Record<string, Partial<Settings>> = {
     classic: {
-      length: 20,
-      thickness: 2,
-      gap: 6,
+      length: 10,
+      thickness: 1,
+      gap: 3,
       centerDot: true,
-      dotSize: 3,
+      dotSize: 2,
       tStyle: false,
     },
     compact: {
-      length: 10,
-      thickness: 3,
-      gap: 3,
+      length: 5,
+      thickness: 2,
+      gap: 2,
       centerDot: false,
       tStyle: false,
     },
@@ -433,22 +433,22 @@ function applyPreset(preset: string) {
       thickness: 1,
       gap: 0,
       centerDot: true,
-      dotSize: 5,
+      dotSize: 3,
       tStyle: false,
     },
     open: {
-      length: 16,
-      thickness: 2,
-      gap: 12,
+      length: 8,
+      thickness: 1,
+      gap: 6,
       centerDot: false,
       tStyle: false,
     },
     precision: {
-      length: 28,
+      length: 14,
       thickness: 1,
-      gap: 4,
+      gap: 2,
       centerDot: true,
-      dotSize: 2,
+      dotSize: 1,
       tStyle: true,
     },
   };

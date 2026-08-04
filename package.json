@@ -1,7 +1,7 @@
 {
   "name": "periscope",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,6 +15,7 @@
     "test:coverage": "npm run test:coverage:frontend && npm run test:coverage:rust",
     "test:coverage:frontend": "vitest run --coverage",
     "test:coverage:rust": "cargo llvm-cov --locked --manifest-path src-tauri/Cargo.toml --workspace --all-targets --all-features --ignore-filename-regex \"(main|lib|hotkeys|overlay)\\.rs$\" --fail-under-lines 80",
+    "release:prepare": "node scripts/release/prepare-release.mjs",
     "tauri": "tauri"
   },
   "dependencies": {
