@@ -208,6 +208,15 @@ fn quit_app(app: &AppHandle) {
     app.exit(0);
 }
 
+fn toggle_crosshair(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    if let Ok(mut settings) = state.settings.lock() {
+        settings.crosshair.enabled = !settings.crosshair.enabled;
+        state.overlay.update(settings.crosshair.clone());
+        let _ = persist_settings(&state.settings_path, &settings);
+    }
+}
+
 fn tray_icon() -> tauri::image::Image<'static> {
     let size = 32_u32;
     let mut rgba = vec![0_u8; (size * size * 4) as usize];
@@ -256,12 +265,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                 let _ = show_settings(app);
             }
             "toggle" => {
-                let state = app.state::<AppState>();
-                if let Ok(mut settings) = state.settings.lock() {
-                    settings.crosshair.enabled = !settings.crosshair.enabled;
-                    state.overlay.update(settings.crosshair.clone());
-                    let _ = persist_settings(&state.settings_path, &settings);
-                }
+                toggle_crosshair(app);
             }
             "quit" => {
                 quit_app(app);
@@ -282,6 +286,7 @@ pub fn run() {
                     let state = app.state::<AppState>();
                     if let Some(action) = state.hotkeys.handle_event(shortcut, event) {
                         match action {
+                            HotkeyAction::ToggleCrosshair => toggle_crosshair(app),
                             HotkeyAction::CloseApp => quit_app(app),
                             HotkeyAction::ShowSettings => {
                                 let _ = show_settings(app);
@@ -391,12 +396,16 @@ mod tests {
         persist_settings(&path, &settings).unwrap();
 
         settings.crosshair.length = 37;
+        settings.hotkeys.toggle_crosshair = "Control+F2".into();
         settings.hotkeys.close_app = "Control+F3".into();
+        settings.hotkeys.show_settings.clear();
         persist_settings(&path, &settings).unwrap();
         let loaded = load_settings(&path);
 
         assert_eq!(loaded.crosshair.length, 37);
+        assert_eq!(loaded.hotkeys.toggle_crosshair, "Control+F2");
         assert_eq!(loaded.hotkeys.close_app, "Control+F3");
+        assert!(loaded.hotkeys.show_settings.is_empty());
         assert!(
             fs::read_to_string(&path)
                 .unwrap()

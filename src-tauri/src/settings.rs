@@ -115,13 +115,20 @@ fn default_presets() -> BTreeMap<PresetId, CrosshairSettings> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HotkeySettings {
+    #[serde(default = "default_toggle_crosshair_hotkey")]
+    pub toggle_crosshair: String,
     pub close_app: String,
     pub show_settings: String,
+}
+
+fn default_toggle_crosshair_hotkey() -> String {
+    "F2".into()
 }
 
 impl Default for HotkeySettings {
     fn default() -> Self {
         Self {
+            toggle_crosshair: default_toggle_crosshair_hotkey(),
             close_app: "F3".into(),
             show_settings: "F4".into(),
         }
@@ -130,19 +137,37 @@ impl Default for HotkeySettings {
 
 impl HotkeySettings {
     pub fn validated(self) -> Result<Self, String> {
-        let close_app = canonical_shortcut(&self.close_app)
+        let toggle_crosshair = canonical_optional_shortcut(&self.toggle_crosshair)
+            .map_err(|error| format!("Toggle crosshair shortcut {error}"))?;
+        let close_app = canonical_optional_shortcut(&self.close_app)
             .map_err(|error| format!("Close app shortcut {error}"))?;
-        let show_settings = canonical_shortcut(&self.show_settings)
+        let show_settings = canonical_optional_shortcut(&self.show_settings)
             .map_err(|error| format!("Show settings shortcut {error}"))?;
 
-        if close_app.eq_ignore_ascii_case(&show_settings) {
-            return Err("Close app and Show settings cannot use the same shortcut.".into());
+        let bindings = [&toggle_crosshair, &close_app, &show_settings];
+        for (index, binding) in bindings.iter().enumerate() {
+            if !binding.is_empty()
+                && bindings[index + 1..]
+                    .iter()
+                    .any(|other| binding.eq_ignore_ascii_case(other))
+            {
+                return Err("Hotkey actions cannot use the same shortcut.".into());
+            }
         }
 
         Ok(Self {
+            toggle_crosshair,
             close_app,
             show_settings,
         })
+    }
+}
+
+fn canonical_optional_shortcut(value: &str) -> Result<String, String> {
+    if value.trim().is_empty() {
+        Ok(String::new())
+    } else {
+        canonical_shortcut(value)
     }
 }
 
@@ -455,6 +480,7 @@ mod tests {
         let settings = HotkeySettings {
             close_app: "ctrl + shift + f3".into(),
             show_settings: "f4".into(),
+            ..HotkeySettings::default()
         }
         .validated()
         .unwrap();
@@ -464,6 +490,7 @@ mod tests {
         let duplicate = HotkeySettings {
             close_app: "CTRL+F4".into(),
             show_settings: "Control+F4".into(),
+            ..HotkeySettings::default()
         }
         .validated();
         assert!(duplicate.is_err());
@@ -480,21 +507,39 @@ mod tests {
             let settings = HotkeySettings {
                 close_app: input.into(),
                 show_settings: "F4".into(),
+                ..HotkeySettings::default()
             }
             .validated()
             .unwrap();
             assert_eq!(settings.close_app, expected);
         }
 
-        for invalid in ["", "Control+", "Control", "Hyper+F3", "F25"] {
+        for invalid in ["Control+", "Control", "Hyper+F3", "F25"] {
             assert!(
                 HotkeySettings {
                     close_app: invalid.into(),
                     show_settings: "F4".into(),
+                    ..HotkeySettings::default()
                 }
                 .validated()
                 .is_err()
             );
         }
+
+        let unset = HotkeySettings {
+            close_app: "  ".into(),
+            ..HotkeySettings::default()
+        }
+        .validated()
+        .unwrap();
+        assert!(unset.close_app.is_empty());
+    }
+
+    #[test]
+    fn legacy_hotkey_settings_default_the_toggle_binding() {
+        let settings: HotkeySettings =
+            serde_json::from_str(r#"{"closeApp":"F3","showSettings":"F4"}"#).unwrap();
+
+        assert_eq!(settings.toggle_crosshair, "F2");
     }
 }

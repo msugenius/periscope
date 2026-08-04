@@ -714,6 +714,11 @@ h1 {
   justify-items: end;
   gap: 5px;
 }
+.hotkey-input {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
 .hotkey-control small {
   color: var(--muted-2);
 }
@@ -748,6 +753,37 @@ h1 {
     inset 0 0 18px rgba(53, 232, 255, 0.055),
     0 0 0 3px rgba(53, 232, 255, 0.1);
   color: var(--cyan);
+}
+.hotkey-binding.is-empty {
+  color: var(--muted-2);
+  font-style: italic;
+}
+.hotkey-clear {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  flex: 0 0 32px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 112, 135, 0.22);
+  border-radius: 8px;
+  background: rgba(178, 42, 69, 0.07);
+  color: #d77f8d;
+  transition: 0.16s ease;
+}
+.hotkey-clear svg {
+  width: 14px;
+  height: 14px;
+}
+.hotkey-clear:hover:not(:disabled),
+.hotkey-clear:focus-visible {
+  border-color: rgba(255, 112, 135, 0.55);
+  background: rgba(178, 42, 69, 0.16);
+  color: #ff9aaa;
+}
+.hotkey-clear:disabled {
+  cursor: default;
+  opacity: 0.3;
 }
 .hotkey-error {
   grid-column: 1 / -1;
@@ -859,6 +895,9 @@ footer {
     justify-items: stretch;
   }
   .hotkey-binding {
+    width: 100%;
+  }
+  .hotkey-input {
     width: 100%;
   }
   .hotkeys-actions {
