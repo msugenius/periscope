@@ -336,7 +336,7 @@ mod tests {
         fs::create_dir_all(&directory).unwrap();
         fs::write(&path, "{ definitely not json").unwrap();
         let recovered = load_settings(&path);
-        assert_eq!(recovered.crosshair.length, 20);
+        assert_eq!(recovered.crosshair.length, 10);
         assert_eq!(recovered.hotkeys.show_settings, "F4");
         fs::remove_dir_all(directory).unwrap();
     }

@@ -14,6 +14,7 @@
   --cyan: #35e8ff;
   --violet: #7c5cff;
   --radius: 16px;
+  --subtitle-font-size: 12px;
 }
 
 * {
@@ -33,6 +34,9 @@ input {
 }
 button {
   color: inherit;
+}
+small {
+  font-size: var(--subtitle-font-size);
 }
 svg {
   width: 20px;
@@ -101,6 +105,7 @@ body {
   stroke-width: 1.8;
 }
 .status {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -114,6 +119,71 @@ body {
   font-weight: 700;
   letter-spacing: 0.85px;
   text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: 0.16s ease;
+}
+.status:disabled {
+  cursor: default;
+}
+.status[hidden] {
+  display: none;
+}
+.status.update-available,
+.status.update-downloading,
+.status.update-installing {
+  border-color: rgba(255, 166, 61, 0.58);
+  color: #ffc274;
+  background: rgba(255, 146, 43, 0.12);
+}
+.status.update-available:not(:disabled) {
+  cursor: pointer;
+}
+.status.update-available:not(:disabled):hover {
+  border-color: rgba(255, 177, 77, 0.82);
+  background: rgba(255, 146, 43, 0.2);
+}
+.status.update-available i,
+.status.update-downloading i,
+.status.update-installing i {
+  background: #ff9f3f;
+  box-shadow: 0 0 10px rgba(255, 159, 63, 0.78);
+}
+.status.update-downloading::after,
+.status.update-installing::after {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: #ff9f3f;
+  box-shadow: 0 0 8px rgba(255, 159, 63, 0.7);
+  content: "";
+}
+.status.update-downloading::after {
+  width: var(--update-progress, 0%);
+  transition: width 0.18s linear;
+}
+.status.update-installing::after {
+  width: 35%;
+  animation: update-installing 1.1s ease-in-out infinite;
+}
+@keyframes update-installing {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(350%);
+  }
+}
+.status.update-failed {
+  border-color: rgba(255, 113, 130, 0.4);
+  color: #ff9aaa;
+  background: rgba(178, 42, 69, 0.1);
+}
+.status.update-failed i {
+  background: #ff7182;
+  box-shadow: 0 0 10px rgba(255, 113, 130, 0.65);
 }
 .status i,
 .save-state i {
@@ -450,7 +520,6 @@ h1 {
   color: var(--cyan);
 }
 .preset small {
-  font-size: 10px;
   color: #7c899d;
 }
 .mini-cross {
@@ -483,6 +552,15 @@ h1 {
     inset 0 -10px rgba(13, 17, 24, 1);
 }
 .mini-dot {
+  position: relative;
+  width: 27px;
+  height: 27px;
+}
+.mini-dot::after {
+  content: "";
+  position: absolute;
+  top: 11px;
+  left: 11px;
   width: 5px;
   height: 5px;
   border-radius: 1px;
@@ -494,9 +572,12 @@ h1 {
 .open {
   transform: scale(1.08);
 }
-.precision::before,
-.precision::after {
+.t-shape::before,
+.t-shape::after {
   opacity: 0.8;
+}
+.t-shape::after {
+  clip-path: inset(50% 0 0);
 }
 
 .controls-column {
@@ -561,7 +642,6 @@ h1 {
 .number-wrap small {
   margin-left: -3px;
   color: #596579;
-  font-size: 10px;
 }
 .divider {
   height: 1px;
@@ -586,7 +666,6 @@ h1 {
 }
 .toggle-row small {
   color: var(--muted-2);
-  font-size: 10px;
 }
 .toggle-row input {
   opacity: 0;
@@ -763,7 +842,6 @@ h1 {
 }
 .hotkey-control small {
   color: var(--muted-2);
-  font-size: 10px;
 }
 .hotkey-binding {
   min-width: 178px;
@@ -830,91 +908,6 @@ footer {
   padding: 0 22px;
   border-top: 1px solid var(--line);
   background: rgba(8, 11, 17, 0.56);
-}
-.update-status {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  margin-bottom: 16px;
-  padding: 13px 15px;
-  border: 1px solid rgba(53, 232, 255, 0.24);
-  border-radius: 12px;
-  background: rgba(31, 41, 58, 0.86);
-  color: #c3ccda;
-  font-size: 12px;
-}
-.update-status[hidden] {
-  display: none;
-}
-.update-status strong,
-.update-status span {
-  display: block;
-}
-.update-status strong {
-  margin-bottom: 3px;
-  color: #f6f8fb;
-  font-size: 13px;
-}
-.update-copy {
-  min-width: 0;
-}
-.update-notes {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.update-actions {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 8px;
-}
-.update-actions .button {
-  height: 34px;
-}
-.update-actions .button.primary {
-  min-width: 148px;
-}
-.update-actions .button:disabled {
-  cursor: wait;
-  filter: saturate(0.45);
-  opacity: 0.65;
-}
-.update-progress {
-  position: relative;
-  width: 100%;
-  overflow: hidden;
-  padding-bottom: 7px;
-}
-.update-progress::after {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 3px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
-  content: "";
-}
-.update-progress i {
-  position: absolute;
-  z-index: 1;
-  bottom: 0;
-  left: 0;
-  height: 3px;
-  border-radius: 999px;
-  background: var(--cyan);
-  box-shadow: 0 0 8px rgba(53, 232, 255, 0.55);
-}
-.update-failed {
-  border-color: rgba(255, 113, 130, 0.34);
-  background: rgba(76, 30, 40, 0.42);
-}
-.update-checking,
-.update-up-to-date,
-.update-dismissed {
-  justify-content: flex-start;
-  padding-block: 10px;
 }
 .save-state {
   display: flex;
