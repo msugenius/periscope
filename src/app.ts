@@ -536,16 +536,20 @@ function drawPreview() {
   if (settings.centerDot) {
     if (settings.outline) {
       ctx.fillStyle = settings.outlineColor;
-      const size = settings.dotSize + settings.outlineThickness * 2;
-      ctx.fillRect(cx - size / 2, cy - size / 2, size, size);
+      ctx.beginPath();
+      ctx.arc(
+        cx,
+        cy,
+        settings.dotSize / 2 + settings.outlineThickness,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
     }
     ctx.fillStyle = settings.color;
-    ctx.fillRect(
-      cx - settings.dotSize / 2,
-      cy - settings.dotSize / 2,
-      settings.dotSize,
-      settings.dotSize,
-    );
+    ctx.beginPath();
+    ctx.arc(cx, cy, settings.dotSize / 2, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 

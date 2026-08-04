@@ -563,7 +563,7 @@ h1 {
   left: 11px;
   width: 5px;
   height: 5px;
-  border-radius: 1px;
+  border-radius: 50%;
   background: currentColor;
 }
 .compact {

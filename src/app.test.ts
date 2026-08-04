@@ -44,8 +44,10 @@ const defaultSettings = {
 };
 
 const canvasContext = {
+  arc: vi.fn(),
   beginPath: vi.fn(),
   clearRect: vi.fn(),
+  fill: vi.fn(),
   fillRect: vi.fn(),
   lineTo: vi.fn(),
   moveTo: vi.fn(),
@@ -65,6 +67,7 @@ async function startApp() {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   document.body.innerHTML = '<div id="app"></div>';
   mocks.invoke.mockReset();
   mocks.listen.mockReset();
@@ -101,6 +104,15 @@ afterEach(() => {
 });
 
 describe("settings application", () => {
+  it("renders the center dot and its outline as circles", async () => {
+    await startApp();
+
+    expect(canvasContext.arc).toHaveBeenCalledWith(360, 220, 2, 0, Math.PI * 2);
+    expect(canvasContext.arc).toHaveBeenCalledWith(360, 220, 1, 0, Math.PI * 2);
+    expect(canvasContext.fill).toHaveBeenCalledTimes(2);
+    expect(canvasContext.fillRect).not.toHaveBeenCalled();
+  });
+
   it("renders settings before a delayed update snapshot completes", async () => {
     const updateCalls: string[] = [];
     let resolveStatus: ((value: typeof idleUpdate) => void) | undefined;

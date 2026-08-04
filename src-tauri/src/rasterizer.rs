@@ -56,29 +56,76 @@ pub(crate) fn rasterize(pixels: &mut [u32], settings: &CrosshairSettings) {
     }
 
     if settings.center_dot {
-        let dot_half = settings.dot_size / 2;
         if settings.outline {
-            let radius = dot_half + settings.outline_thickness;
-            fill_rect(
+            fill_circle(
                 pixels,
-                center - radius,
-                center - radius,
-                center + radius + 1,
-                center + radius + 1,
+                center,
+                settings.dot_size + settings.outline_thickness * 2,
                 outline_color,
                 alpha,
             );
         }
-        fill_rect(
-            pixels,
-            center - dot_half,
-            center - dot_half,
-            center - dot_half + settings.dot_size,
-            center - dot_half + settings.dot_size,
-            color,
-            alpha,
-        );
+        fill_circle(pixels, center, settings.dot_size, color, alpha);
     }
+}
+
+fn fill_circle(pixels: &mut [u32], center: i32, diameter: i32, rgb: (u8, u8, u8), alpha: u8) {
+    const SAMPLES_PER_AXIS: i32 = 4;
+    const SAMPLE_COUNT: i32 = SAMPLES_PER_AXIS * SAMPLES_PER_AXIS;
+
+    let left = center - diameter / 2;
+    let right = left + diameter;
+    let center_scaled = (left * 2 + diameter) * SAMPLES_PER_AXIS;
+    let radius_scaled = diameter * SAMPLES_PER_AXIS;
+    let radius_squared = radius_scaled * radius_scaled;
+
+    for y in left.clamp(0, OVERLAY_SIZE)..right.clamp(0, OVERLAY_SIZE) {
+        let row = y as usize * OVERLAY_SIZE as usize;
+        for x in left.clamp(0, OVERLAY_SIZE)..right.clamp(0, OVERLAY_SIZE) {
+            let mut covered_samples = 0;
+            for sample_y in 0..SAMPLES_PER_AXIS {
+                let y_scaled = (y * 2 * SAMPLES_PER_AXIS) + sample_y * 2 + 1;
+                let dy = y_scaled - center_scaled;
+                for sample_x in 0..SAMPLES_PER_AXIS {
+                    let x_scaled = (x * 2 * SAMPLES_PER_AXIS) + sample_x * 2 + 1;
+                    let dx = x_scaled - center_scaled;
+                    if dx * dx + dy * dy <= radius_squared {
+                        covered_samples += 1;
+                    }
+                }
+            }
+
+            if covered_samples > 0 {
+                blend_coverage(
+                    &mut pixels[row + x as usize],
+                    rgb,
+                    alpha,
+                    covered_samples,
+                    SAMPLE_COUNT,
+                );
+            }
+        }
+    }
+}
+
+fn blend_coverage(
+    destination: &mut u32,
+    rgb: (u8, u8, u8),
+    alpha: u8,
+    covered_samples: i32,
+    sample_count: i32,
+) {
+    let inverse_coverage = sample_count - covered_samples;
+    let source_channel = |channel: u8| u32::from(channel) * u32::from(alpha) / 255;
+    let mix = |source: u32, existing: u32| {
+        (source * covered_samples as u32 + existing * inverse_coverage as u32) / sample_count as u32
+    };
+    let existing = *destination;
+    let output_alpha = mix(u32::from(alpha), existing >> 24);
+    let output_red = mix(source_channel(rgb.0), (existing >> 16) & 0xff);
+    let output_green = mix(source_channel(rgb.1), (existing >> 8) & 0xff);
+    let output_blue = mix(source_channel(rgb.2), existing & 0xff);
+    *destination = (output_alpha << 24) | (output_red << 16) | (output_green << 8) | output_blue;
 }
 
 fn fill_rect(
