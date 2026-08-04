@@ -216,8 +216,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Could not inspect release state." }
           $all = @(($releasePagesJson | ConvertFrom-Json) | ForEach-Object { $_ })
           $existing = @($all | Where-Object tag_name -eq $env:RELEASE_TAG)
-          if ($existing.Count -gt 1 -or ($existing.Count -eq 1 -and $existing[0].target_commitish -cne $sha)) { throw "Release tag or target conflict." }
-          if ($existing.Count -eq 1 -and -not $existing[0].draft) { throw "Published release appeared after early inspection; rerun for verified no-op." }
+          if ($existing.Count -gt 1) { throw "Multiple releases use the requested tag." }
+          if ($existing.Count -eq 1 -and -not $existing[0].draft) {
+            if ($existing[0].target_commitish -cne $sha) { throw "Published release tag targets another commit." }
+            throw "Published release appeared after early inspection; rerun for verified no-op."
+          }
 
           $stable = @($all | Where-Object { -not $_.draft -and -not $_.prerelease -and $_.tag_name -match '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' })
           $previous = $stable | Sort-Object { [version]$_.tag_name.Substring(1) } | Select-Object -Last 1
@@ -247,12 +250,25 @@ jobs:
           $draftRequest = [ordered]@{ tag_name=$env:RELEASE_TAG; target_commitish=$sha; name=$title; body=$notes; draft=$true; prerelease=$false; make_latest="false" }
           $draftRequestPath = "$root/draft-request.json"
           $draftRequest | ConvertTo-Json -Depth 8 | Set-Content $draftRequestPath -Encoding utf8
-          if ($existing.Count -eq 0) {
-            $draft = gh api --method POST "/repos/$env:TRUSTED_REPOSITORY/releases" --input $draftRequestPath | ConvertFrom-Json
-          } else {
+          if ($existing.Count -eq 1) {
+            $escapedVersion = [regex]::Escape($env:RELEASE_VERSION)
+            $ownedDraftName = "^periScope $escapedVersion \(PR #[1-9][0-9]*, [0-9a-f]{7}\)$"
+            if ([long]$existing[0].id -le 0 -or [string]$existing[0].name -cnotmatch $ownedDraftName -or [string]$existing[0].target_commitish -cnotmatch "^[0-9a-f]{40}$") {
+              throw "Existing draft is not recognizable as a release-pipeline draft."
+            }
             $draft = gh api --method PATCH "/repos/$env:TRUSTED_REPOSITORY/releases/$($existing[0].id)" --input $draftRequestPath | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw "Could not retarget the release-pipeline draft." }
+            foreach ($staleAsset in @($draft.assets)) {
+              if ([long]$staleAsset.id -le 0) { throw "Draft contains an asset without a valid immutable ID." }
+              gh api --method DELETE "/repos/$env:TRUSTED_REPOSITORY/releases/assets/$($staleAsset.id)"
+              if ($LASTEXITCODE -ne 0) { throw "Could not remove stale draft asset $($staleAsset.name)." }
+            }
+            $draft = gh api "/repos/$env:TRUSTED_REPOSITORY/releases/$($draft.id)" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0 -or @($draft.assets).Count -ne 0) { throw "Could not establish an empty retry draft." }
+          } else {
+            $draft = gh api --method POST "/repos/$env:TRUSTED_REPOSITORY/releases" --input $draftRequestPath | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw "Could not create a fresh draft release." }
           }
-          if ($LASTEXITCODE -ne 0) { throw "Could not create or resume the draft release." }
           if ([long]$draft.id -le 0 -or -not $draft.draft -or $draft.tag_name -cne $env:RELEASE_TAG -or $draft.target_commitish -cne $sha) { throw "Draft identity verification failed." }
           $uploadBase = "https://uploads.github.com/repos/$env:TRUSTED_REPOSITORY/releases/$($draft.id)/assets"
           if ($draft.upload_url -cne "${uploadBase}{?name,label}") { throw "Draft upload URL verification failed." }

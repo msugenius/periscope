@@ -76,7 +76,7 @@ Test-Case "GitHub pagination works without incompatible jq flags" {
     }
 }
 
-Test-Case "draft releases are verified by immutable release id" {
+Test-Case "draft releases are safely replaced and verified by immutable release id" {
     $workflow = Get-Content (Join-Path $PSScriptRoot "..\..\.github\workflows\release.yml") -Raw
     if ($workflow.Contains('gh api "/repos/$env:TRUSTED_REPOSITORY/releases/tags/$env:RELEASE_TAG"')) {
         throw "Draft releases cannot be read reliably through the release-by-tag endpoint."
@@ -87,10 +87,12 @@ Test-Case "draft releases are verified by immutable release id" {
     if ($workflow.Contains('gh release upload $env:RELEASE_TAG') -or $workflow.Contains('gh release edit $env:RELEASE_TAG')) {
         throw "Draft upload and publish mutations must use the immutable release ID."
     }
-
     foreach ($required in @(
-        '$draft = gh api --method POST "/repos/$env:TRUSTED_REPOSITORY/releases" --input $draftRequestPath | ConvertFrom-Json',
+        '$ownedDraftName = "^periScope $escapedVersion \(PR #[1-9][0-9]*, [0-9a-f]{7}\)$"',
         '$draft = gh api --method PATCH "/repos/$env:TRUSTED_REPOSITORY/releases/$($existing[0].id)" --input $draftRequestPath | ConvertFrom-Json',
+        'gh api --method DELETE "/repos/$env:TRUSTED_REPOSITORY/releases/assets/$($staleAsset.id)"',
+        'if ($LASTEXITCODE -ne 0 -or @($draft.assets).Count -ne 0) { throw "Could not establish an empty retry draft." }',
+        '$draft = gh api --method POST "/repos/$env:TRUSTED_REPOSITORY/releases" --input $draftRequestPath | ConvertFrom-Json',
         'if ([long]$draft.id -le 0 -or -not $draft.draft -or $draft.tag_name -cne $env:RELEASE_TAG -or $draft.target_commitish -cne $sha)',
         '$uploadBase = "https://uploads.github.com/repos/$env:TRUSTED_REPOSITORY/releases/$($draft.id)/assets"',
         'Invoke-RestMethod -Method Post -Uri $uploadUri',
@@ -106,11 +108,13 @@ Test-Case "draft releases are verified by immutable release id" {
 Test-Case "retry and conflict inspection" {
     $sha = "0123456789abcdef0123456789abcdef01234567"
     $matching = [pscustomobject]@{ tag_name = "v0.2.0"; draft = $true; prerelease = $false; target_commitish = $sha; assets = @() }
-    Assert-Equal (Get-ReleaseDisposition -Version "0.2.0" -MergeSha $sha -Releases @($matching)).State "resume-draft"
-    $matching.draft = $false
-    Assert-Equal (Get-ReleaseDisposition -Version "0.2.0" -MergeSha $sha -Releases @($matching)).State "verify-published"
+    Assert-Equal (Get-ReleaseDisposition -Version "0.2.0" -MergeSha $sha -Releases @($matching)).State "replace-draft"
     $matching.target_commitish = ("f" * 40)
+    Assert-Equal (Get-ReleaseDisposition -Version "0.2.0" -MergeSha $sha -Releases @($matching)).State "replace-draft"
+    $matching.draft = $false
     Assert-Throws { Get-ReleaseDisposition -Version "0.2.0" -MergeSha $sha -Releases @($matching) }
+    $matching.target_commitish = $sha
+    Assert-Equal (Get-ReleaseDisposition -Version "0.2.0" -MergeSha $sha -Releases @($matching)).State "verify-published"
 }
 
 Test-Case "deterministic handoff metadata and public manifest" {

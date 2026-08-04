@@ -155,10 +155,10 @@ function Get-ReleaseDisposition {
         return [pscustomobject][ordered]@{ State = 'build-new'; Tag = $tag; Release = $null }
     }
     $release = $matching[0]
-    if ([string]$release.target_commitish -cne $MergeSha) {
-        throw "Tag $tag targets another commit."
+    if (-not $release.draft -and [string]$release.target_commitish -cne $MergeSha) {
+        throw "Published tag $tag targets another commit."
     }
-    $state = if ($release.draft) { 'resume-draft' } else { 'verify-published' }
+    $state = if ($release.draft) { 'replace-draft' } else { 'verify-published' }
     [pscustomobject][ordered]@{ State = $state; Tag = $tag; Release = $release }
 }
 
