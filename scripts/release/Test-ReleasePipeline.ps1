@@ -81,11 +81,21 @@ Test-Case "draft releases are verified by immutable release id" {
     if ($workflow.Contains('gh api "/repos/$env:TRUSTED_REPOSITORY/releases/tags/$env:RELEASE_TAG"')) {
         throw "Draft releases cannot be read reliably through the release-by-tag endpoint."
     }
+    if ($workflow.Contains('$draftMatches') -or $workflow.Contains('Could not refresh draft release state.')) {
+        throw "A newly created draft must not be rediscovered through an eventually consistent release listing."
+    }
+    if ($workflow.Contains('gh release upload $env:RELEASE_TAG') -or $workflow.Contains('gh release edit $env:RELEASE_TAG')) {
+        throw "Draft upload and publish mutations must use the immutable release ID."
+    }
 
     foreach ($required in @(
-        '$draft = gh api "/repos/$env:TRUSTED_REPOSITORY/releases/$($draftMatches[0].id)"',
+        '$draft = gh api --method POST "/repos/$env:TRUSTED_REPOSITORY/releases" --input $draftRequestPath | ConvertFrom-Json',
+        '$draft = gh api --method PATCH "/repos/$env:TRUSTED_REPOSITORY/releases/$($existing[0].id)" --input $draftRequestPath | ConvertFrom-Json',
+        'if ([long]$draft.id -le 0 -or -not $draft.draft -or $draft.tag_name -cne $env:RELEASE_TAG -or $draft.target_commitish -cne $sha)',
+        '$uploadBase = "https://uploads.github.com/repos/$env:TRUSTED_REPOSITORY/releases/$($draft.id)/assets"',
+        'Invoke-RestMethod -Method Post -Uri $uploadUri',
         '$verified = gh api "/repos/$env:TRUSTED_REPOSITORY/releases/$($draft.id)"',
-        '$published = gh api "/repos/$env:TRUSTED_REPOSITORY/releases/$($draft.id)"'
+        '$published = gh api --method PATCH "/repos/$env:TRUSTED_REPOSITORY/releases/$($draft.id)" --input $publishRequestPath | ConvertFrom-Json'
     )) {
         if (-not $workflow.Contains($required)) {
             throw "Release workflow is missing the required ID-based lookup: $required"
