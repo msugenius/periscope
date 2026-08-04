@@ -16,7 +16,8 @@ const base: UpdateSnapshot = {
 };
 
 function host() {
-  const element = document.createElement("section");
+  const element = document.createElement("button");
+  element.type = "button";
   document.body.replaceChildren(element);
   return element;
 }
@@ -35,18 +36,17 @@ describe("update status rendering", () => {
       },
     });
 
-    expect(element.textContent).toContain("0.2.0");
-    expect(element.textContent).toContain("<img src=x");
+    expect(element.textContent).toBe("Click to update");
+    expect(element.title).toContain("<img src=x");
     expect(element.querySelector("img")).toBeNull();
-    expect(
-      element.querySelector('[data-update-action="install"]'),
-    ).toBeTruthy();
+    expect(element.dataset.updateAction).toBe("install");
+    expect(element.disabled).toBe(false);
   });
 
   it("renders up-to-date and safe failure states without an offer", () => {
     const element = host();
     renderUpdateSnapshot(element, { ...base, phase: "up-to-date" });
-    expect(element.textContent).toContain("up to date");
+    expect(element.textContent).toContain("Up to date");
 
     renderUpdateSnapshot(element, {
       ...base,
@@ -55,8 +55,9 @@ describe("update status rendering", () => {
       message: "Could not check for updates. Try again next time.",
     });
     expect(element.getAttribute("role")).toBe("status");
-    expect(element.textContent).toContain("Try again next time");
-    expect(element.querySelector('[data-update-action="install"]')).toBeNull();
+    expect(element.textContent).toContain("Update unavailable");
+    expect(element.title).toContain("Try again next time");
+    expect(element.dataset.updateAction).toBeUndefined();
   });
 });
 
@@ -105,7 +106,8 @@ describe("update bridge", () => {
 
     await connectUpdater(element, { invoke, listen });
 
-    expect(element.textContent).toContain("Recovered offer");
+    expect(element.textContent).toContain("Click to update");
+    expect(element.title).toContain("Recovered offer");
     expect(invoke).toHaveBeenCalledWith("start_update_check");
   });
 
@@ -129,12 +131,8 @@ describe("update bridge", () => {
       listen: vi.fn(async () => vi.fn()),
     });
 
-    (
-      element.querySelector(
-        '[data-update-action="install"]',
-      ) as HTMLButtonElement
-    ).click();
-    expect(element.querySelectorAll("button:disabled")).toHaveLength(2);
+    element.click();
+    expect(element.disabled).toBe(true);
     await vi.waitFor(() =>
       expect(invoke).toHaveBeenCalledWith("install_update", {
         version: "0.2.0",
@@ -142,7 +140,7 @@ describe("update bridge", () => {
     );
   });
 
-  it("dismisses the displayed candidate without downloading it", async () => {
+  it("replaces the old banner actions with one compact install control", async () => {
     const available: UpdateSnapshot = {
       ...base,
       phase: "available",
@@ -153,38 +151,19 @@ describe("update bridge", () => {
         platform: "windows-x86_64",
       },
     };
-    const dismissed: UpdateSnapshot = {
-      ...base,
-      phase: "dismissed",
-    };
-    const invoke = vi.fn(async (command: string) =>
-      command === "dismiss_update" ? dismissed : available,
-    );
+    const invoke = vi.fn(async () => available);
     const element = host();
     await connectUpdater(element, {
       invoke,
       listen: vi.fn(async () => vi.fn()),
     });
 
-    (
-      element.querySelector(
-        '[data-update-action="dismiss"]',
-      ) as HTMLButtonElement
-    ).click();
-
-    await vi.waitFor(() =>
-      expect(invoke).toHaveBeenCalledWith("dismiss_update", {
-        version: "0.2.0",
-      }),
-    );
-    expect(invoke).not.toHaveBeenCalledWith(
-      "install_update",
-      expect.anything(),
-    );
-    expect(element.textContent).toContain("dismissed until periScope restarts");
+    expect(element.dataset.updateAction).toBe("install");
+    expect(element.querySelectorAll("button")).toHaveLength(0);
+    expect(element.textContent).toBe("Click to update");
   });
 
-  it("renders download progress, restart messaging, and actionable recovery", () => {
+  it("renders compact download, install, and failure states", () => {
     const element = host();
     const candidate = {
       version: "0.2.0",
@@ -199,11 +178,11 @@ describe("update bridge", () => {
       downloadedBytes: 50,
       totalBytes: 100,
     });
-    const progress = element.querySelector('[role="progressbar"]')!;
-    expect(progress.getAttribute("aria-valuenow")).toBe("50");
+    expect(element.textContent).toContain("Downloading 50%");
+    expect(element.classList).toContain("update-downloading");
 
     renderUpdateSnapshot(element, { ...base, phase: "installing", candidate });
-    expect(element.textContent).toContain("restart automatically");
+    expect(element.textContent).toContain("Installing");
 
     renderUpdateSnapshot(element, {
       ...base,
@@ -212,6 +191,7 @@ describe("update bridge", () => {
       message:
         "The update could not be downloaded. Restart periScope to try again.",
     });
-    expect(element.textContent).toContain("Restart periScope to try again");
+    expect(element.textContent).toContain("Update unavailable");
+    expect(element.title).toContain("Restart periScope to try again");
   });
 });

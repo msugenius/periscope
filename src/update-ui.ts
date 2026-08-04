@@ -71,15 +71,6 @@ function text(tag: string, value: string, className?: string) {
   return element;
 }
 
-function actionButton(action: string, label: string) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = `button ${action === "install" ? "primary" : "secondary"}`;
-  button.dataset.updateAction = action;
-  button.textContent = label;
-  return button;
-}
-
 export function renderUpdateSnapshot(
   host: HTMLElement,
   snapshot: UpdateSnapshot,
@@ -87,109 +78,88 @@ export function renderUpdateSnapshot(
 ): void {
   currentSnapshot = snapshot;
   host.replaceChildren();
-  host.className = `update-status update-${snapshot.phase}`;
-  host.setAttribute("role", "status");
+  host.className = `status update-${snapshot.phase}`;
   host.setAttribute("aria-live", "polite");
+  host.removeAttribute("aria-label");
+  host.removeAttribute("data-update-action");
+  host.removeAttribute("role");
+  host.removeAttribute("title");
+
+  const button = host instanceof HTMLButtonElement ? host : undefined;
+  if (button) {
+    button.disabled = true;
+    button.onclick = null;
+  }
+
+  const renderBadge = (label: string) => {
+    host.hidden = false;
+    host.setAttribute("role", "status");
+    host.append(document.createElement("i"), text("span", label));
+  };
 
   if (snapshot.phase === "idle") {
-    host.hidden = true;
+    renderBadge("Checking…");
     return;
   }
-  host.hidden = false;
 
   if (snapshot.phase === "checking") {
-    host.append(text("span", "Checking for updates…"));
+    renderBadge("Checking…");
     return;
   }
   if (snapshot.phase === "up-to-date") {
-    host.append(text("span", "periScope is up to date."));
+    renderBadge("Up to date");
     return;
   }
   if (snapshot.phase === "dismissed") {
-    host.append(text("span", "Update dismissed until periScope restarts."));
+    renderBadge("Update later");
     return;
   }
   if (snapshot.phase === "failed") {
-    host.append(
-      text("strong", "Update check unavailable"),
-      text(
-        "span",
-        snapshot.message ?? "Could not check for updates. Try again next time.",
-      ),
-    );
+    renderBadge("Update unavailable");
+    host.title =
+      snapshot.message ?? "Could not check for updates. Try again next time.";
     return;
   }
 
   const candidate = snapshot.candidate;
   if (!candidate) {
-    host.append(text("span", "Update status unavailable."));
+    renderBadge("Update unavailable");
     return;
   }
 
   if (snapshot.phase === "available") {
-    const copy = document.createElement("div");
-    copy.className = "update-copy";
-    copy.append(
-      text("strong", `periScope ${candidate.version} is available`),
-      text("span", candidate.notes, "update-notes"),
+    renderBadge("Click to update");
+    host.removeAttribute("role");
+    host.dataset.updateAction = "install";
+    host.title = `periScope ${candidate.version}: ${candidate.notes}`;
+    host.setAttribute(
+      "aria-label",
+      `Update periScope to version ${candidate.version}`,
     );
-    const actions = document.createElement("div");
-    actions.className = "update-actions";
-    actions.append(
-      actionButton("dismiss", "Not now"),
-      actionButton("install", "Update and restart"),
-    );
-    actions.addEventListener("click", (event) => {
-      const button = (event.target as Element).closest<HTMLButtonElement>(
-        "[data-update-action]",
-      );
-      if (!button || !onAction) return;
-      actions
-        .querySelectorAll<HTMLButtonElement>("button")
-        .forEach((action) => (action.disabled = true));
-      onAction(
-        button.dataset.updateAction as "install" | "dismiss",
-        candidate.version,
-      );
-    });
-    host.append(copy, actions);
+    if (button) {
+      button.disabled = false;
+      button.onclick = () => {
+        button.disabled = true;
+        onAction?.("install", candidate.version);
+      };
+    }
     return;
   }
 
   if (snapshot.phase === "downloading") {
     const downloaded = snapshot.downloadedBytes ?? 0;
     const total = snapshot.totalBytes;
-    const progress = document.createElement("div");
-    progress.className = "update-progress";
-    progress.setAttribute("role", "progressbar");
-    progress.setAttribute(
-      "aria-label",
-      `Downloading periScope ${candidate.version}`,
-    );
-    progress.setAttribute("aria-valuemin", "0");
     if (total && total > 0) {
       const percent = Math.min(100, Math.round((downloaded / total) * 100));
-      progress.setAttribute("aria-valuemax", "100");
-      progress.setAttribute("aria-valuenow", String(percent));
-      progress.append(text("span", `Downloading update… ${percent}%`));
-      const meter = document.createElement("i");
-      meter.style.width = `${percent}%`;
-      progress.append(meter);
+      renderBadge(`Downloading ${percent}%`);
     } else {
-      progress.append(text("span", "Downloading update…"));
+      renderBadge("Downloading…");
     }
-    host.append(progress);
     return;
   }
 
   if (snapshot.phase === "installing") {
-    host.append(
-      text("strong", `Installing periScope ${candidate.version}`),
-      text(
-        "span",
-        "periScope will restart automatically when the update is ready.",
-      ),
-    );
+    renderBadge("Installing…");
   }
 }
 

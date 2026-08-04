@@ -183,7 +183,7 @@ function renderShell() {
         <div class="brand" data-tauri-drag-region>
           <span class="brand-mark">${icon("crosshair")}</span>
           <span>periScope</span>
-          <span class="status"><i></i> overlay active</span>
+          <button id="update-status" class="status" type="button" hidden></button>
         </div>
         <div class="window-actions">
           <button id="minimize" aria-label="Minimize">${icon("minus")}</button>
@@ -199,7 +199,7 @@ function renderShell() {
           </nav>
         </aside>
 
-        <section class="content"><section id="update-status" hidden></section>${currentPage === "crosshair" ? renderCrosshairPage() : renderHotkeysPage()}</section>
+        <section class="content">${currentPage === "crosshair" ? renderCrosshairPage() : renderHotkeysPage()}</section>
       </div>
 
       <footer>
