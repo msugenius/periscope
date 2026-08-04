@@ -83,20 +83,12 @@ function renderCrosshairPage() {
   return `
     <div class="page-heading">
       <div><span class="eyebrow">Overlay editor</span><h1>Crosshair</h1><p>Tune every detail and see it on-screen instantly.</p></div>
-      <label class="master-switch"><input id="enabled" data-key="enabled" type="checkbox" ${settings.enabled ? "checked" : ""}/><i>${icon("power")}</i><span>${settings.enabled ? "Enabled" : "Disabled"}</span></label>
+      <label class="master-switch ${settings.enabled ? "" : "is-disabled"}"><input id="enabled" data-key="enabled" type="checkbox" ${settings.enabled ? "checked" : ""}/><i>${icon("power")}</i><span>${settings.enabled ? "Enabled" : "Disabled"}</span></label>
     </div>
 
     <div class="editor-grid">
-      <section class="preview-panel panel">
-        <div class="panel-heading"><div><h2>Live preview</h2><p>Pixel-accurate representation</p></div><span class="preview-badge">Center</span></div>
-        <div class="preview-stage">
-          <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
-          <div class="grid-floor"></div>
-          <canvas id="preview" width="720" height="440"></canvas>
-          <span class="axis axis-x"></span><span class="axis axis-y"></span>
-          <div class="preview-coordinates"><span>X ${settings.xOffset}</span><span>Y ${settings.yOffset}</span></div>
-        </div>
-        <div class="preset-heading"><span>Quick shapes</span><small>Choose a base, then fine-tune</small></div>
+      <section class="panel quick-shapes-card">
+        <div class="panel-heading"><div><h2>Quick shapes</h2><p>Choose a base, then fine-tune</p></div>${icon("crosshair")}</div>
         <div class="presets">
           <button class="preset active" data-preset="classic"><span class="mini-cross classic"></span><small>Classic</small></button>
           <button class="preset" data-preset="compact"><span class="mini-cross compact"></span><small>Compact</small></button>
@@ -106,33 +98,25 @@ function renderCrosshairPage() {
         </div>
       </section>
 
-      <div class="controls-column">
-        <section class="panel settings-card">
-          <div class="panel-heading"><div><h2>Shape</h2><p>Geometry and composition</p></div>${icon("crosshair")}</div>
-          ${range("length", "Length", 1, 64, "px")}
-          ${range("thickness", "Thickness", 1, 16, "px")}
-          ${range("gap", "Gap", 0, 32, "px")}
-          <div class="divider"></div>
-          ${toggle("centerDot", "Center dot")}
-          <div class="conditional ${settings.centerDot ? "" : "muted"}">${range("dotSize", "Dot size", 1, 16, "px")}</div>
-          ${toggle("tStyle", "T-style", "Remove the upper arm")}
-        </section>
+      <section class="panel settings-card shape-card">
+        <div class="panel-heading"><div><h2>Shape</h2><p>Geometry and composition</p></div>${icon("crosshair")}</div>
+        ${range("length", "Length", 1, 64, "px")}
+        ${range("thickness", "Thickness", 1, 16, "px")}
+        ${range("gap", "Gap", 0, 32, "px")}
+        <div class="divider"></div>
+        ${toggle("centerDot", "Center dot")}
+        <div class="conditional ${settings.centerDot ? "" : "muted"}">${range("dotSize", "Dot size", 1, 16, "px")}</div>
+        ${toggle("tStyle", "T-style", "Remove the upper arm")}
+      </section>
 
-        <section class="panel settings-card">
-          <div class="panel-heading"><div><h2>Color & visibility</h2><p>Contrast against any scene</p></div>${icon("sliders")}</div>
-          <label class="color-row"><span>Crosshair color</span><div><input id="color" data-key="color" type="color" value="${settings.color}"/><input class="hex" data-key="color" value="${settings.color.toUpperCase()}" maxlength="7"/></div></label>
-          ${range("opacity", "Opacity", 5, 100, "%")}
-          <div class="divider"></div>
-          ${toggle("outline", "Outline", "Improve visibility on bright scenes")}
-          <div class="conditional ${settings.outline ? "" : "muted"}">${range("outlineThickness", "Outline size", 1, 8, "px")}</div>
-        </section>
-
-        <section class="panel settings-card placement-card">
-          <div class="panel-heading"><div><h2>Placement</h2><p>Offset from exact screen center</p></div><button id="center-position" class="icon-button" title="Reset position">${icon("crosshair")}</button></div>
-          ${range("xOffset", "Horizontal", -200, 200, "px")}
-          ${range("yOffset", "Vertical", -200, 200, "px")}
-        </section>
-      </div>
+      <section class="panel settings-card visibility-card">
+        <div class="panel-heading"><div><h2>Color & visibility</h2><p>Contrast against any scene</p></div>${icon("sliders")}</div>
+        <label class="color-row"><span>Crosshair color</span><div><input id="color" data-key="color" type="color" value="${settings.color}"/><input class="hex" data-key="color" value="${settings.color.toUpperCase()}" maxlength="7"/></div></label>
+        ${range("opacity", "Opacity", 5, 100, "%")}
+        <div class="divider"></div>
+        ${toggle("outline", "Outline", "Improve visibility on bright scenes")}
+        <div class="conditional ${settings.outline ? "" : "muted"}">${range("outlineThickness", "Outline size", 1, 8, "px")}</div>
+      </section>
     </div>`;
 }
 
@@ -209,7 +193,6 @@ function renderShell() {
     </main>`;
 
   bindEvents();
-  drawPreview();
   renderCurrentUpdate(document.querySelector<HTMLElement>("#update-status")!);
 }
 
@@ -245,11 +228,6 @@ function bindEvents() {
     const crosshair = await invoke<CrosshairSettings>("reset_settings");
     settings = { ...settings, ...crosshair };
     renderShell();
-  });
-  document.querySelector("#center-position")?.addEventListener("click", () => {
-    settings.xOffset = 0;
-    settings.yOffset = 0;
-    syncAndSave(true);
   });
   document
     .querySelectorAll<HTMLButtonElement>("[data-preset]")
@@ -405,10 +383,7 @@ function updateFromInput(input: HTMLInputElement) {
     });
 
   if (["centerDot", "outline", "enabled"].includes(key)) void syncAndSave(true);
-  else {
-    drawPreview();
-    scheduleSave();
-  }
+  else scheduleSave();
 }
 
 function applyPreset(preset: string) {
@@ -489,70 +464,6 @@ function setSaveStatus(message: string, error: boolean) {
   if (label) label.textContent = message;
 }
 
-function drawPreview() {
-  const canvas = document.querySelector<HTMLCanvasElement>("#preview");
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d")!;
-  const scale = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  canvas.width = Math.max(1, Math.round(rect.width * scale));
-  canvas.height = Math.max(1, Math.round(rect.height * scale));
-  ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  ctx.clearRect(0, 0, rect.width, rect.height);
-  if (!settings.enabled) return;
-
-  const cx = rect.width / 2;
-  const cy = rect.height / 2;
-  ctx.globalAlpha = settings.opacity / 100;
-  ctx.lineCap = "butt";
-
-  const arms: [number, number, number, number][] = [
-    [cx - settings.gap - settings.length, cy, cx - settings.gap, cy],
-    [cx + settings.gap, cy, cx + settings.gap + settings.length, cy],
-    [cx, cy + settings.gap, cx, cy + settings.gap + settings.length],
-  ];
-  if (!settings.tStyle)
-    arms.push([cx, cy - settings.gap - settings.length, cx, cy - settings.gap]);
-
-  if (settings.outline) {
-    ctx.strokeStyle = settings.outlineColor;
-    ctx.lineWidth = settings.thickness + settings.outlineThickness * 2;
-    arms.forEach(([x1, y1, x2, y2]) => {
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.stroke();
-    });
-  }
-  ctx.strokeStyle = settings.color;
-  ctx.lineWidth = settings.thickness;
-  arms.forEach(([x1, y1, x2, y2]) => {
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-  });
-
-  if (settings.centerDot) {
-    if (settings.outline) {
-      ctx.fillStyle = settings.outlineColor;
-      ctx.beginPath();
-      ctx.arc(
-        cx,
-        cy,
-        settings.dotSize / 2 + settings.outlineThickness,
-        0,
-        Math.PI * 2,
-      );
-      ctx.fill();
-    }
-    ctx.fillStyle = settings.color;
-    ctx.beginPath();
-    ctx.arc(cx, cy, settings.dotSize / 2, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
 export async function boot() {
   try {
     settings = await invoke<Settings>("get_settings");
@@ -576,7 +487,6 @@ export async function boot() {
     if (events.signal.aborted) cleanup();
     else updaterCleanup = cleanup;
   });
-  window.addEventListener("resize", drawPreview, { signal: events.signal });
   window.addEventListener("keydown", handleRecordingKeyDown, {
     capture: true,
     signal: events.signal,

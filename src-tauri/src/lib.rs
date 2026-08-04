@@ -150,8 +150,8 @@ fn show_settings(app: &AppHandle) -> tauri::Result<()> {
     }
     WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
         .title("periScope")
-        .inner_size(1300.0, 1000.0)
-        .min_inner_size(900.0, 650.0)
+        .inner_size(1050.0, 750.0)
+        .min_inner_size(1050.0, 750.0)
         .center()
         .decorations(false)
         .transparent(true)

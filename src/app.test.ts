@@ -43,23 +43,6 @@ const defaultSettings = {
   hotkeyErrors: {},
 };
 
-const canvasContext = {
-  arc: vi.fn(),
-  beginPath: vi.fn(),
-  clearRect: vi.fn(),
-  fill: vi.fn(),
-  fillRect: vi.fn(),
-  lineTo: vi.fn(),
-  moveTo: vi.fn(),
-  setTransform: vi.fn(),
-  stroke: vi.fn(),
-  fillStyle: "",
-  globalAlpha: 1,
-  lineCap: "butt",
-  lineWidth: 1,
-  strokeStyle: "",
-};
-
 async function startApp() {
   vi.resetModules();
   const { boot } = await import("./app");
@@ -80,23 +63,6 @@ beforeEach(() => {
     if (command === "start_update_check") return structuredClone(idleUpdate);
     return undefined;
   });
-  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
-    canvasContext as unknown as CanvasRenderingContext2D,
-  );
-  vi.spyOn(
-    HTMLCanvasElement.prototype,
-    "getBoundingClientRect",
-  ).mockReturnValue({
-    width: 720,
-    height: 440,
-    top: 0,
-    right: 720,
-    bottom: 440,
-    left: 0,
-    x: 0,
-    y: 0,
-    toJSON: () => ({}),
-  });
 });
 
 afterEach(() => {
@@ -104,13 +70,34 @@ afterEach(() => {
 });
 
 describe("settings application", () => {
-  it("renders the center dot and its outline as circles", async () => {
+  it("uses a muted master switch when the overlay is disabled", async () => {
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "get_settings") {
+        return { ...structuredClone(defaultSettings), enabled: false };
+      }
+      return undefined;
+    });
+
     await startApp();
 
-    expect(canvasContext.arc).toHaveBeenCalledWith(360, 220, 2, 0, Math.PI * 2);
-    expect(canvasContext.arc).toHaveBeenCalledWith(360, 220, 1, 0, Math.PI * 2);
-    expect(canvasContext.fill).toHaveBeenCalledTimes(2);
-    expect(canvasContext.fillRect).not.toHaveBeenCalled();
+    const masterSwitch = document.querySelector(".master-switch");
+    expect(masterSwitch?.classList).toContain("is-disabled");
+    expect(masterSwitch?.textContent).toContain("Disabled");
+  });
+
+  it("renders quick shapes as a standalone panel without a live preview", async () => {
+    await startApp();
+
+    const panel = document.querySelector(".quick-shapes-card");
+    expect(panel?.querySelector("h2")?.textContent).toBe("Quick shapes");
+    expect(panel?.querySelector("p")?.textContent).toBe(
+      "Choose a base, then fine-tune",
+    );
+    expect(document.querySelector("#preview")).toBeNull();
+    expect(document.body.textContent).not.toContain("Live preview");
+    expect(document.querySelector(".controls-column")).toBeNull();
+    expect(document.querySelector(".placement-card")).toBeNull();
+    expect(document.body.textContent).not.toContain("Placement");
   });
 
   it("renders settings before a delayed update snapshot completes", async () => {
@@ -270,7 +257,7 @@ describe("settings application", () => {
     );
   });
 
-  it("wires window controls, presets, reset, and position reset", async () => {
+  it("wires window controls, presets, and reset", async () => {
     mocks.invoke.mockImplementation(async (command: string) => {
       if (command === "get_settings") return structuredClone(defaultSettings);
       if (command === "reset_settings") {
@@ -291,7 +278,6 @@ describe("settings application", () => {
     (
       document.querySelector('[data-preset="compact"]') as HTMLButtonElement
     ).click();
-    (document.querySelector("#center-position") as HTMLButtonElement).click();
     (document.querySelector("#reset") as HTMLButtonElement).click();
     await vi.waitFor(() =>
       expect(mocks.invoke).toHaveBeenCalledWith("minimize_settings"),
