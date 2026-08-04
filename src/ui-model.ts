@@ -1,10 +1,13 @@
 export type HotkeySettings = {
+  toggleCrosshair: string;
   closeApp: string;
   showSettings: string;
 };
 
+export type HotkeyName = keyof HotkeySettings;
+
 export type HotkeyErrors = Partial<
-  Record<keyof HotkeySettings | "configuration", string>
+  Record<HotkeyName | "configuration", string>
 >;
 
 export type PresetId = "classic" | "dot" | "precision";

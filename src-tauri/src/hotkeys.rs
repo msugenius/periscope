@@ -9,6 +9,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutEvent, S
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HotkeyAction {
+    ToggleCrosshair,
     CloseApp,
     ShowSettings,
 }
@@ -263,18 +264,29 @@ fn unregister_active(
 fn parse_pair(
     settings: &HotkeySettings,
 ) -> Result<Vec<(&'static str, HotkeyAction, Shortcut)>, String> {
-    Ok(vec![
-        (
+    let mut shortcuts = Vec::new();
+    if !settings.toggle_crosshair.is_empty() {
+        shortcuts.push((
+            "toggleCrosshair",
+            HotkeyAction::ToggleCrosshair,
+            parse_shortcut("Toggle crosshair", &settings.toggle_crosshair)?,
+        ));
+    }
+    if !settings.close_app.is_empty() {
+        shortcuts.push((
             "closeApp",
             HotkeyAction::CloseApp,
             parse_shortcut("Close app", &settings.close_app)?,
-        ),
-        (
+        ));
+    }
+    if !settings.show_settings.is_empty() {
+        shortcuts.push((
             "showSettings",
             HotkeyAction::ShowSettings,
             parse_shortcut("Show settings", &settings.show_settings)?,
-        ),
-    ])
+        ));
+    }
+    Ok(shortcuts)
 }
 
 fn parse_shortcut(label: &str, value: &str) -> Result<Shortcut, String> {
@@ -285,6 +297,7 @@ fn parse_shortcut(label: &str, value: &str) -> Result<Shortcut, String> {
 
 fn action_label(action: HotkeyAction) -> &'static str {
     match action {
+        HotkeyAction::ToggleCrosshair => "Toggle crosshair",
         HotkeyAction::CloseApp => "Close app",
         HotkeyAction::ShowSettings => "Show settings",
     }
@@ -300,25 +313,42 @@ mod tests {
         let parsed = parse_pair(&HotkeySettings {
             close_app: "Control+F3".into(),
             show_settings: "F4".into(),
+            ..HotkeySettings::default()
         })
         .unwrap();
-        assert_eq!(parsed.len(), 2);
-        assert_eq!(parsed[0].0, "closeApp");
-        assert_eq!(parsed[0].1, HotkeyAction::CloseApp);
+        assert_eq!(parsed.len(), 3);
+        assert_eq!(parsed[0].0, "toggleCrosshair");
+        assert_eq!(parsed[0].1, HotkeyAction::ToggleCrosshair);
+        assert_eq!(parsed[1].0, "closeApp");
+        assert_eq!(parsed[1].1, HotkeyAction::CloseApp);
         assert!(parse_shortcut("Close app", "not-a-shortcut").is_err());
+    }
+
+    #[test]
+    fn skips_unset_bindings() {
+        let one_unset = parse_pair(&HotkeySettings {
+            close_app: String::new(),
+            ..HotkeySettings::default()
+        })
+        .unwrap();
+        assert_eq!(one_unset.len(), 2);
+        assert_eq!(one_unset[0].1, HotkeyAction::ToggleCrosshair);
+        assert_eq!(one_unset[1].1, HotkeyAction::ShowSettings);
     }
 
     #[test]
     fn validation_rejects_duplicate_and_conflicting_shortcuts() {
         let conflict = HotkeySettings {
+            toggle_crosshair: "Control+KeyQ".into(),
             close_app: "Control+KeyQ".into(),
-            show_settings: "ctrl+q".into(),
+            ..HotkeySettings::default()
         };
         assert!(conflict.validated().is_err());
 
         let duplicate_modifier = HotkeySettings {
             close_app: "Control+Control+KeyQ".into(),
             show_settings: "F4".into(),
+            ..HotkeySettings::default()
         };
         assert!(duplicate_modifier.validated().is_err());
     }

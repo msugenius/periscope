@@ -40,7 +40,7 @@ const defaultSettings = {
   xOffset: 0,
   yOffset: 0,
   activePreset: "classic" as const,
-  hotkeys: { closeApp: "F3", showSettings: "F4" },
+  hotkeys: { toggleCrosshair: "F2", closeApp: "F3", showSettings: "F4" },
   hotkeyErrors: {},
 };
 
@@ -149,6 +149,8 @@ describe("settings application", () => {
     await vi.waitFor(() =>
       expect(document.querySelector("h1")?.textContent).toBe("Hotkeys"),
     );
+    expect(document.body.textContent).toContain("Toggle crosshair");
+    expect(document.body.textContent).toContain("F2");
     expect(document.body.textContent).toContain("F3");
   });
 
@@ -160,7 +162,9 @@ describe("settings application", () => {
     await vi.waitFor(() =>
       expect(document.querySelector("[data-hotkey]")).toBeTruthy(),
     );
-    (document.querySelector("[data-hotkey]") as HTMLButtonElement).click();
+    (
+      document.querySelector('[data-hotkey="closeApp"]') as HTMLButtonElement
+    ).click();
     await vi.waitFor(() =>
       expect(mocks.invoke).toHaveBeenCalledWith("set_hotkey_recording", {
         recording: true,
@@ -187,6 +191,51 @@ describe("settings application", () => {
       "update_hotkeys",
       expect.anything(),
     );
+  });
+
+  it("clears an individual shortcut and renders it as unassigned", async () => {
+    mocks.invoke.mockImplementation(
+      async (
+        command: string,
+        payload?: { hotkeys?: typeof defaultSettings.hotkeys },
+      ) => {
+        if (command === "get_settings") return structuredClone(defaultSettings);
+        if (command === "update_hotkeys")
+          return structuredClone(payload?.hotkeys);
+        return undefined;
+      },
+    );
+    await startApp();
+    (
+      document.querySelector('[data-page="hotkeys"]') as HTMLButtonElement
+    ).click();
+    await vi.waitFor(() =>
+      expect(
+        document.querySelector('[data-clear-hotkey="closeApp"]'),
+      ).toBeTruthy(),
+    );
+
+    (
+      document.querySelector(
+        '[data-clear-hotkey="closeApp"]',
+      ) as HTMLButtonElement
+    ).click();
+
+    await vi.waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith("update_hotkeys", {
+        hotkeys: { ...defaultSettings.hotkeys, closeApp: "" },
+      }),
+    );
+    expect(
+      document.querySelector('[data-hotkey="closeApp"]')?.textContent,
+    ).toBe("Not set");
+    expect(
+      (
+        document.querySelector(
+          '[data-clear-hotkey="closeApp"]',
+        ) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
   });
 
   it("shows native hotkey errors without losing the active binding", async () => {
@@ -230,7 +279,11 @@ describe("settings application", () => {
     mocks.invoke.mockImplementation(async (command: string) => {
       if (command === "get_settings") return structuredClone(defaultSettings);
       if (command === "update_hotkeys") {
-        return { closeApp: "Control+KeyQ", showSettings: "F4" };
+        return {
+          toggleCrosshair: "F2",
+          closeApp: "Control+KeyQ",
+          showSettings: "F4",
+        };
       }
       return undefined;
     });
@@ -241,7 +294,9 @@ describe("settings application", () => {
     await vi.waitFor(() =>
       expect(document.querySelector("[data-hotkey]")).toBeTruthy(),
     );
-    (document.querySelector("[data-hotkey]") as HTMLButtonElement).click();
+    (
+      document.querySelector('[data-hotkey="closeApp"]') as HTMLButtonElement
+    ).click();
     await vi.waitFor(() =>
       expect(
         document.querySelector('[data-hotkey][aria-pressed="true"]'),

@@ -6,6 +6,7 @@ import {
   shortcutFromEvent,
   type CrosshairKey,
   type CrosshairSettings,
+  type HotkeyName,
   type HotkeySettings,
   type PresetId,
   type Settings,
@@ -30,7 +31,7 @@ const defaults: Settings = {
   xOffset: 0,
   yOffset: 0,
   activePreset: "classic",
-  hotkeys: { closeApp: "F3", showSettings: "F4" },
+  hotkeys: { toggleCrosshair: "F2", closeApp: "F3", showSettings: "F4" },
   hotkeyErrors: {},
 };
 
@@ -38,7 +39,7 @@ let settings = { ...defaults };
 let saveTimer: number | undefined;
 let saveScheduled = false;
 let currentPage: SettingsPage = "crosshair";
-let recordingHotkey: keyof HotkeySettings | null = null;
+let recordingHotkey: HotkeyName | null = null;
 let recordingReleaseCode: string | null = null;
 let nativeRecording = false;
 let hotkeyStatus = "Changes save automatically.";
@@ -57,6 +58,7 @@ const icon = (name: string) => {
     close: '<path d="m6 6 12 12M18 6 6 18"/>',
     keyboard:
       '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M18 10h.01M7 14h7m2 0h2"/>',
+    trash: '<path d="M4 7h16m-10 4v6m4-6v6M9 7l1-3h4l1 3m3 0-1 14H7L6 7"/>',
   };
   return `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name]}</svg>`;
 };
@@ -121,7 +123,7 @@ function renderCrosshairPage() {
 }
 
 function hotkeyRow(
-  key: keyof HotkeySettings,
+  key: HotkeyName,
   label: string,
   description: string,
   defaultValue: string,
@@ -132,7 +134,10 @@ function hotkeyRow(
     <div class="hotkey-row">
       <div class="hotkey-copy"><strong>${label}</strong><span>${description}</span></div>
       <div class="hotkey-control">
-        <button class="hotkey-binding ${recording ? "recording" : ""}" data-hotkey="${key}" aria-label="Change ${label} shortcut" aria-pressed="${recording}">${recording ? "Press shortcut..." : escapeHtml(displayHotkey(settings.hotkeys[key]))}</button>
+        <div class="hotkey-input">
+          <button class="hotkey-binding ${recording ? "recording" : ""} ${settings.hotkeys[key] ? "" : "is-empty"}" data-hotkey="${key}" aria-label="Change ${label} shortcut" aria-pressed="${recording}">${recording ? "Press shortcut..." : settings.hotkeys[key] ? escapeHtml(displayHotkey(settings.hotkeys[key])) : "Not set"}</button>
+          <button class="hotkey-clear" data-clear-hotkey="${key}" aria-label="Clear ${label} shortcut" title="Clear shortcut" ${settings.hotkeys[key] ? "" : "disabled"}>${icon("trash")}</button>
+        </div>
         <small>Default ${defaultValue}</small>
       </div>
       ${error ? `<p class="hotkey-error" role="alert">${escapeHtml(error)}</p>` : ""}
@@ -147,9 +152,10 @@ function renderHotkeysPage() {
       <span class="global-badge">${icon("keyboard")} System-wide</span>
     </div>
     <section class="panel hotkeys-card">
-      <div class="panel-heading"><div><h2>Shortcut bindings</h2><p>Select a binding, then press a new key combination.</p></div>${icon("keyboard")}</div>
+      <div class="panel-heading"><div><h2>Shortcut bindings</h2><p>Select a binding to record it, or clear it to leave the action unassigned.</p></div>${icon("keyboard")}</div>
       ${configurationError ? `<div class="hotkey-banner" role="alert">${escapeHtml(configurationError)}</div>` : ""}
       <div class="hotkey-list">
+        ${hotkeyRow("toggleCrosshair", "Toggle crosshair", "Enable or disable the crosshair overlay without opening Settings.", "F2")}
         ${hotkeyRow("closeApp", "Close app", "Exit periScope, including the overlay and tray icon.", "F3")}
         ${hotkeyRow("showSettings", "Show settings", "Open, restore, and focus this Settings window.", "F4")}
       </div>
@@ -240,7 +246,14 @@ function bindEvents() {
     .querySelectorAll<HTMLButtonElement>("[data-hotkey]")
     .forEach((button) => {
       button.addEventListener("click", () =>
-        beginRecording(button.dataset.hotkey as keyof HotkeySettings),
+        beginRecording(button.dataset.hotkey as HotkeyName),
+      );
+    });
+  document
+    .querySelectorAll<HTMLButtonElement>("[data-clear-hotkey]")
+    .forEach((button) => {
+      button.addEventListener("click", () =>
+        clearHotkey(button.dataset.clearHotkey as HotkeyName),
       );
     });
   document
@@ -254,7 +267,7 @@ async function setNativeRecording(recording: boolean) {
   nativeRecording = recording;
 }
 
-async function beginRecording(key: keyof HotkeySettings) {
+async function beginRecording(key: HotkeyName) {
   try {
     await setNativeRecording(true);
     recordingHotkey = key;
@@ -297,10 +310,12 @@ async function handleRecordingKeyDown(event: KeyboardEvent) {
 
   const key = recordingHotkey;
   const proposed = shortcutFromEvent(event);
-  const otherKey: keyof HotkeySettings =
-    key === "closeApp" ? "showSettings" : "closeApp";
-  if (proposed.toLowerCase() === settings.hotkeys[otherKey].toLowerCase()) {
-    hotkeyStatus = "That shortcut is already assigned to the other action.";
+  const duplicate = Object.entries(settings.hotkeys).some(
+    ([otherKey, shortcut]) =>
+      otherKey !== key && shortcut.toLowerCase() === proposed.toLowerCase(),
+  );
+  if (duplicate) {
+    hotkeyStatus = "That shortcut is already assigned to another action.";
     hotkeyStatusError = true;
     renderShell();
     document
@@ -318,7 +333,13 @@ async function handleRecordingKeyDown(event: KeyboardEvent) {
     settings.hotkeyErrors = {};
     recordingReleaseCode = event.code;
     recordingHotkey = null;
-    hotkeyStatus = `${key === "closeApp" ? "Close app" : "Show settings"} saved as ${displayHotkey(accepted[key])}.`;
+    const label =
+      key === "toggleCrosshair"
+        ? "Toggle crosshair"
+        : key === "closeApp"
+          ? "Close app"
+          : "Show settings";
+    hotkeyStatus = `${label} saved as ${displayHotkey(accepted[key])}.`;
     hotkeyStatusError = false;
     renderShell();
   } catch (error) {
@@ -327,6 +348,41 @@ async function handleRecordingKeyDown(event: KeyboardEvent) {
       .querySelector<HTMLButtonElement>(`[data-hotkey="${key}"]`)
       ?.focus();
   }
+}
+
+async function updateHotkeys(
+  proposed: HotkeySettings,
+  successMessage: (accepted: HotkeySettings) => string,
+) {
+  try {
+    const accepted = await invoke<HotkeySettings>("update_hotkeys", {
+      hotkeys: proposed,
+    });
+    settings.hotkeys = accepted;
+    settings.hotkeyErrors = {};
+    hotkeyStatus = successMessage(accepted);
+    hotkeyStatusError = false;
+    renderShell();
+    return true;
+  } catch (error) {
+    showHotkeyError(error);
+    return false;
+  }
+}
+
+async function clearHotkey(key: HotkeyName) {
+  await stopRecording();
+  if (!settings.hotkeys[key]) return;
+  const label =
+    key === "toggleCrosshair"
+      ? "Toggle crosshair"
+      : key === "closeApp"
+        ? "Close app"
+        : "Show settings";
+  await updateHotkeys(
+    { ...settings.hotkeys, [key]: "" },
+    () => `${label} shortcut cleared.`,
+  );
 }
 
 async function handleRecordingKeyUp(event: KeyboardEvent) {
@@ -344,7 +400,7 @@ async function resetHotkeys() {
   try {
     settings.hotkeys = await invoke<HotkeySettings>("reset_hotkeys");
     settings.hotkeyErrors = {};
-    hotkeyStatus = "Hotkeys reset to F3 and F4.";
+    hotkeyStatus = "Hotkeys reset to F2, F3, and F4.";
     hotkeyStatusError = false;
   } catch (error) {
     showHotkeyError(error, false);

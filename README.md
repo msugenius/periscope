@@ -83,14 +83,15 @@ or persisted settings file.
 
 |    Default    | Action                                                          |
 | :-----------: | --------------------------------------------------------------- |
+| <kbd>F2</kbd> | Enable or disable the crosshair overlay                         |
 | <kbd>F3</kbd> | Close periScope completely, including the overlay and tray icon |
 | <kbd>F4</kbd> | Open, restore, and focus Settings                               |
 
-Use the **Hotkeys** page to record a key or key combination. Accepted changes
-take effect immediately and survive restarts. Duplicate, invalid, or unavailable
-shortcuts are rejected without replacing the previous working binding.
-**Reset hotkeys** restores <kbd>F3</kbd>/<kbd>F4</kbd> without changing the
-crosshair.
+Use the **Hotkeys** page to record a key or key combination or clear individual
+bindings. Accepted changes take effect immediately and survive restarts.
+Duplicate, invalid, or unavailable shortcuts are rejected without replacing the
+previous working binding. **Reset hotkeys** restores
+<kbd>F2</kbd>/<kbd>F3</kbd>/<kbd>F4</kbd> without changing the crosshair.
 
 ## How it works
 
