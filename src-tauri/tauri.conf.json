@@ -36,6 +36,12 @@
     "icon": [
       "icons/icon.ico"
     ],
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico"
+      }
+    },
     "shortDescription": "Custom crosshair overlay",
     "longDescription": "A lightweight, native Windows crosshair overlay with a modern settings interface."
   },
