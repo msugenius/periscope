@@ -28,11 +28,11 @@ const defaultSettings = {
   enabled: true,
   color: "#35E8FF",
   opacity: 100,
-  length: 20,
-  thickness: 2,
-  gap: 6,
+  length: 10,
+  thickness: 1,
+  gap: 3,
   centerDot: true,
-  dotSize: 3,
+  dotSize: 2,
   tStyle: false,
   outline: true,
   outlineThickness: 1,
@@ -293,6 +293,51 @@ describe("settings application", () => {
     );
   });
 
+  it("applies every preset at half-size geometry", async () => {
+    const appliedSettings: Array<typeof defaultSettings> = [];
+    mocks.invoke.mockImplementation(
+      async (
+        command: string,
+        payload?: { settings?: typeof defaultSettings },
+      ) => {
+        if (command === "get_settings") return structuredClone(defaultSettings);
+        if (command === "update_settings" && payload?.settings) {
+          appliedSettings.push(structuredClone(payload.settings));
+          return structuredClone(payload.settings);
+        }
+        return undefined;
+      },
+    );
+    await startApp();
+
+    const presets = {
+      classic: { length: 10, thickness: 1, gap: 3, dotSize: 2 },
+      compact: { length: 5, thickness: 2, gap: 2 },
+      dot: { length: 1, thickness: 1, gap: 0, dotSize: 3 },
+      open: { length: 8, thickness: 1, gap: 6 },
+      precision: {
+        length: 14,
+        thickness: 1,
+        gap: 2,
+        dotSize: 1,
+        tStyle: true,
+      },
+    };
+
+    expect(
+      document.querySelector('[data-preset="precision"]')?.textContent,
+    ).toContain("T-Shape");
+
+    for (const [name, expected] of Object.entries(presets)) {
+      (
+        document.querySelector(`[data-preset="${name}"]`) as HTMLButtonElement
+      ).click();
+      await vi.waitFor(() =>
+        expect(appliedSettings.at(-1)).toMatchObject(expected),
+      );
+    }
+  });
+
   it("reports a settings save failure and clears it after recovery", async () => {
     let updateAttempts = 0;
     mocks.invoke.mockImplementation(async (command: string) => {
@@ -335,7 +380,7 @@ describe("settings application", () => {
 
     expect(document.querySelector("h1")?.textContent).toBe("Crosshair");
     expect((document.querySelector("#length") as HTMLInputElement).value).toBe(
-      "20",
+      "10",
     );
     expect(consoleError).toHaveBeenCalled();
   });
