@@ -15,8 +15,11 @@ src-tauri/target/
 !.env.example
 *.pem
 *.key
+*.key.pub
+*.key.password
 *.p12
 *.pfx
+tauri-pubkey.txt
 
 # Coverage output
 coverage/
