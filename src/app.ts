@@ -7,6 +7,7 @@ import {
   type CrosshairKey,
   type CrosshairSettings,
   type HotkeySettings,
+  type PresetId,
   type Settings,
 } from "./ui-model";
 import { connectUpdater, renderCurrentUpdate } from "./update-ui";
@@ -28,12 +29,14 @@ const defaults: Settings = {
   outlineColor: "#000000",
   xOffset: 0,
   yOffset: 0,
+  activePreset: "classic",
   hotkeys: { closeApp: "F3", showSettings: "F4" },
   hotkeyErrors: {},
 };
 
 let settings = { ...defaults };
 let saveTimer: number | undefined;
+let saveScheduled = false;
 let currentPage: SettingsPage = "crosshair";
 let recordingHotkey: keyof HotkeySettings | null = null;
 let recordingReleaseCode: string | null = null;
@@ -49,7 +52,6 @@ const icon = (name: string) => {
       '<circle cx="12" cy="12" r="5"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/>',
     sliders:
       '<path d="M4 7h10m4 0h2M4 17h2m4 0h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
-    tray: '<path d="M4 15h16l-2 5H6zM12 3v10m-4-4 4 4 4-4"/>',
     power: '<path d="M12 2v10m-6.4-6.4a9 9 0 1 0 12.8 0"/>',
     minus: '<path d="M5 12h14"/>',
     close: '<path d="m6 6 12 12M18 6 6 18"/>',
@@ -83,56 +85,38 @@ function renderCrosshairPage() {
   return `
     <div class="page-heading">
       <div><span class="eyebrow">Overlay editor</span><h1>Crosshair</h1><p>Tune every detail and see it on-screen instantly.</p></div>
-      <label class="master-switch"><input id="enabled" data-key="enabled" type="checkbox" ${settings.enabled ? "checked" : ""}/><i>${icon("power")}</i><span>${settings.enabled ? "Enabled" : "Disabled"}</span></label>
+      <label class="master-switch ${settings.enabled ? "" : "is-disabled"}"><input id="enabled" data-key="enabled" type="checkbox" ${settings.enabled ? "checked" : ""}/><i>${icon("power")}</i><span>${settings.enabled ? "Enabled" : "Disabled"}</span></label>
     </div>
 
     <div class="editor-grid">
-      <section class="preview-panel panel">
-        <div class="panel-heading"><div><h2>Live preview</h2><p>Pixel-accurate representation</p></div><span class="preview-badge">Center</span></div>
-        <div class="preview-stage">
-          <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
-          <div class="grid-floor"></div>
-          <canvas id="preview" width="720" height="440"></canvas>
-          <span class="axis axis-x"></span><span class="axis axis-y"></span>
-          <div class="preview-coordinates"><span>X ${settings.xOffset}</span><span>Y ${settings.yOffset}</span></div>
-        </div>
-        <div class="preset-heading"><span>Quick shapes</span><small>Choose a base, then fine-tune</small></div>
+      <section class="panel quick-shapes-card">
+        <div class="panel-heading"><div><h2>Quick shapes</h2><p>Choose a base, then fine-tune</p></div>${icon("crosshair")}</div>
         <div class="presets">
-          <button class="preset active" data-preset="classic"><span class="mini-cross classic"></span><small>Classic</small></button>
-          <button class="preset" data-preset="compact"><span class="mini-cross compact"></span><small>Compact</small></button>
-          <button class="preset" data-preset="dot"><span class="mini-dot"></span><small>Dot</small></button>
-          <button class="preset" data-preset="open"><span class="mini-cross open"></span><small>Open</small></button>
-          <button class="preset" data-preset="precision"><span class="mini-cross t-shape"></span><small>T-Shape</small></button>
+          <button class="preset ${settings.activePreset === "classic" ? "active" : ""}" data-preset="classic" aria-pressed="${settings.activePreset === "classic"}"><span class="mini-cross classic"></span><small>Classic</small></button>
+          <button class="preset ${settings.activePreset === "dot" ? "active" : ""}" data-preset="dot" aria-pressed="${settings.activePreset === "dot"}"><span class="mini-dot"></span><small>Dot</small></button>
+          <button class="preset ${settings.activePreset === "precision" ? "active" : ""}" data-preset="precision" aria-pressed="${settings.activePreset === "precision"}"><span class="mini-cross t-shape"></span><small>T-Shape</small></button>
         </div>
       </section>
 
-      <div class="controls-column">
-        <section class="panel settings-card">
-          <div class="panel-heading"><div><h2>Shape</h2><p>Geometry and composition</p></div>${icon("crosshair")}</div>
-          ${range("length", "Length", 1, 64, "px")}
-          ${range("thickness", "Thickness", 1, 16, "px")}
-          ${range("gap", "Gap", 0, 32, "px")}
-          <div class="divider"></div>
-          ${toggle("centerDot", "Center dot")}
-          <div class="conditional ${settings.centerDot ? "" : "muted"}">${range("dotSize", "Dot size", 1, 16, "px")}</div>
-          ${toggle("tStyle", "T-style", "Remove the upper arm")}
-        </section>
+      <section class="panel settings-card shape-card">
+        <div class="panel-heading"><div><h2>Shape</h2><p>Relative to preset</p></div>${icon("crosshair")}</div>
+        ${range("length", "Length", 1, 64, "px")}
+        ${range("thickness", "Thickness", 1, 16, "px")}
+        ${range("gap", "Gap", 0, 32, "px")}
+        <div class="divider"></div>
+        ${toggle("centerDot", "Center dot")}
+        <div class="conditional ${settings.centerDot ? "" : "muted"}">${range("dotSize", "Dot size", 1, 16, "px")}</div>
+        ${toggle("tStyle", "T-style", "Remove the upper arm")}
+      </section>
 
-        <section class="panel settings-card">
-          <div class="panel-heading"><div><h2>Color & visibility</h2><p>Contrast against any scene</p></div>${icon("sliders")}</div>
-          <label class="color-row"><span>Crosshair color</span><div><input id="color" data-key="color" type="color" value="${settings.color}"/><input class="hex" data-key="color" value="${settings.color.toUpperCase()}" maxlength="7"/></div></label>
-          ${range("opacity", "Opacity", 5, 100, "%")}
-          <div class="divider"></div>
-          ${toggle("outline", "Outline", "Improve visibility on bright scenes")}
-          <div class="conditional ${settings.outline ? "" : "muted"}">${range("outlineThickness", "Outline size", 1, 8, "px")}</div>
-        </section>
-
-        <section class="panel settings-card placement-card">
-          <div class="panel-heading"><div><h2>Placement</h2><p>Offset from exact screen center</p></div><button id="center-position" class="icon-button" title="Reset position">${icon("crosshair")}</button></div>
-          ${range("xOffset", "Horizontal", -200, 200, "px")}
-          ${range("yOffset", "Vertical", -200, 200, "px")}
-        </section>
-      </div>
+      <section class="panel settings-card visibility-card">
+        <div class="panel-heading"><div><h2>Color & visibility</h2><p>Shared across all presets</p></div>${icon("sliders")}</div>
+        <label class="color-row"><span>Crosshair color</span><div><input id="color" data-key="color" type="color" value="${settings.color}"/><input class="hex" data-key="color" value="${settings.color.toUpperCase()}" maxlength="7"/></div></label>
+        ${range("opacity", "Opacity", 5, 100, "%")}
+        <div class="divider"></div>
+        ${toggle("outline", "Outline", "Improve visibility on bright scenes")}
+        <div class="conditional ${settings.outline ? "" : "muted"}">${range("outlineThickness", "Outline size", 1, 8, "px")}</div>
+      </section>
     </div>`;
 }
 
@@ -203,13 +187,12 @@ function renderShell() {
       </div>
 
       <footer>
-        <div class="save-state ${saveStatusError ? "error" : ""}"><i></i><span>${escapeHtml(saveStatus)}</span></div>
-        <div class="footer-actions">${currentPage === "crosshair" ? '<button id="reset" class="button secondary">Reset defaults</button>' : ""}<button id="hide" class="button primary">${icon("tray")}Hide settings<span>Overlay stays active</span></button></div>
+        <div class="save-state ${saveStatusError ? "error" : ""}"><span>${escapeHtml(saveStatus)}</span></div>
+        <div class="footer-actions">${currentPage === "crosshair" ? '<button id="reset" class="button secondary">Reset defaults</button>' : ""}<button id="hide" class="button primary">Hide settings</button></div>
       </footer>
     </main>`;
 
   bindEvents();
-  drawPreview();
   renderCurrentUpdate(document.querySelector<HTMLElement>("#update-status")!);
 }
 
@@ -246,16 +229,11 @@ function bindEvents() {
     settings = { ...settings, ...crosshair };
     renderShell();
   });
-  document.querySelector("#center-position")?.addEventListener("click", () => {
-    settings.xOffset = 0;
-    settings.yOffset = 0;
-    syncAndSave(true);
-  });
   document
     .querySelectorAll<HTMLButtonElement>("[data-preset]")
     .forEach((button) => {
       button.addEventListener("click", () =>
-        applyPreset(button.dataset.preset!),
+        applyPreset(button.dataset.preset as PresetId),
       );
     });
   document
@@ -405,63 +383,45 @@ function updateFromInput(input: HTMLInputElement) {
     });
 
   if (["centerDot", "outline", "enabled"].includes(key)) void syncAndSave(true);
-  else {
-    drawPreview();
-    scheduleSave();
-  }
+  else scheduleSave();
 }
 
-function applyPreset(preset: string) {
-  const presets: Record<string, Partial<Settings>> = {
-    classic: {
-      length: 10,
-      thickness: 1,
-      gap: 3,
-      centerDot: true,
-      dotSize: 2,
-      tStyle: false,
-    },
-    compact: {
-      length: 5,
-      thickness: 2,
-      gap: 2,
-      centerDot: false,
-      tStyle: false,
-    },
-    dot: {
-      length: 1,
-      thickness: 1,
-      gap: 0,
-      centerDot: true,
-      dotSize: 3,
-      tStyle: false,
-    },
-    open: {
-      length: 8,
-      thickness: 1,
-      gap: 6,
-      centerDot: false,
-      tStyle: false,
-    },
-    precision: {
-      length: 14,
-      thickness: 1,
-      gap: 2,
-      centerDot: true,
-      dotSize: 1,
-      tStyle: true,
-    },
-  };
-  Object.assign(settings, presets[preset]);
-  syncAndSave(true);
+async function applyPreset(preset: PresetId) {
+  window.clearTimeout(saveTimer);
+  if (saveScheduled) {
+    saveScheduled = false;
+    if (!(await syncAndSave(false))) return;
+  }
+
+  try {
+    const crosshair = await invoke<CrosshairSettings>("select_preset", {
+      preset,
+    });
+    settings = { ...settings, ...crosshair, activePreset: preset };
+    setSaveStatus("Changes save automatically", false);
+  } catch (error) {
+    const detail =
+      typeof error === "string"
+        ? error
+        : error instanceof Error
+          ? error.message
+          : String(error);
+    setSaveStatus(`Could not select preset: ${detail}`, true);
+  }
+  renderShell();
 }
 
 function scheduleSave() {
   window.clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(() => syncAndSave(false), 40);
+  saveScheduled = true;
+  saveTimer = window.setTimeout(() => {
+    saveScheduled = false;
+    void syncAndSave(false);
+  }, 40);
 }
 
 async function syncAndSave(rerender: boolean) {
+  let saved = true;
   try {
     const crosshair = await invoke<CrosshairSettings>("update_settings", {
       settings,
@@ -469,6 +429,7 @@ async function syncAndSave(rerender: boolean) {
     settings = { ...settings, ...crosshair };
     setSaveStatus("Changes save automatically", false);
   } catch (error) {
+    saved = false;
     const detail =
       typeof error === "string"
         ? error
@@ -478,6 +439,7 @@ async function syncAndSave(rerender: boolean) {
     setSaveStatus(`Could not save settings: ${detail}`, true);
   }
   if (rerender) renderShell();
+  return saved;
 }
 
 function setSaveStatus(message: string, error: boolean) {
@@ -487,70 +449,6 @@ function setSaveStatus(message: string, error: boolean) {
   element?.classList.toggle("error", error);
   const label = element?.querySelector("span");
   if (label) label.textContent = message;
-}
-
-function drawPreview() {
-  const canvas = document.querySelector<HTMLCanvasElement>("#preview");
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d")!;
-  const scale = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  canvas.width = Math.max(1, Math.round(rect.width * scale));
-  canvas.height = Math.max(1, Math.round(rect.height * scale));
-  ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  ctx.clearRect(0, 0, rect.width, rect.height);
-  if (!settings.enabled) return;
-
-  const cx = rect.width / 2;
-  const cy = rect.height / 2;
-  ctx.globalAlpha = settings.opacity / 100;
-  ctx.lineCap = "butt";
-
-  const arms: [number, number, number, number][] = [
-    [cx - settings.gap - settings.length, cy, cx - settings.gap, cy],
-    [cx + settings.gap, cy, cx + settings.gap + settings.length, cy],
-    [cx, cy + settings.gap, cx, cy + settings.gap + settings.length],
-  ];
-  if (!settings.tStyle)
-    arms.push([cx, cy - settings.gap - settings.length, cx, cy - settings.gap]);
-
-  if (settings.outline) {
-    ctx.strokeStyle = settings.outlineColor;
-    ctx.lineWidth = settings.thickness + settings.outlineThickness * 2;
-    arms.forEach(([x1, y1, x2, y2]) => {
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.stroke();
-    });
-  }
-  ctx.strokeStyle = settings.color;
-  ctx.lineWidth = settings.thickness;
-  arms.forEach(([x1, y1, x2, y2]) => {
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-  });
-
-  if (settings.centerDot) {
-    if (settings.outline) {
-      ctx.fillStyle = settings.outlineColor;
-      ctx.beginPath();
-      ctx.arc(
-        cx,
-        cy,
-        settings.dotSize / 2 + settings.outlineThickness,
-        0,
-        Math.PI * 2,
-      );
-      ctx.fill();
-    }
-    ctx.fillStyle = settings.color;
-    ctx.beginPath();
-    ctx.arc(cx, cy, settings.dotSize / 2, 0, Math.PI * 2);
-    ctx.fill();
-  }
 }
 
 export async function boot() {
@@ -576,7 +474,6 @@ export async function boot() {
     if (events.signal.aborted) cleanup();
     else updaterCleanup = cleanup;
   });
-  window.addEventListener("resize", drawPreview, { signal: events.signal });
   window.addEventListener("keydown", handleRecordingKeyDown, {
     capture: true,
     signal: events.signal,

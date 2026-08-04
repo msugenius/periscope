@@ -7,6 +7,8 @@ export type HotkeyErrors = Partial<
   Record<keyof HotkeySettings | "configuration", string>
 >;
 
+export type PresetId = "classic" | "dot" | "precision";
+
 export type Settings = {
   enabled: boolean;
   color: string;
@@ -22,11 +24,15 @@ export type Settings = {
   outlineColor: string;
   xOffset: number;
   yOffset: number;
+  activePreset: PresetId;
   hotkeys: HotkeySettings;
   hotkeyErrors: HotkeyErrors;
 };
 
-export type CrosshairSettings = Omit<Settings, "hotkeys" | "hotkeyErrors">;
+export type CrosshairSettings = Omit<
+  Settings,
+  "activePreset" | "hotkeys" | "hotkeyErrors"
+>;
 export type CrosshairKey = keyof CrosshairSettings;
 
 export function escapeHtml(value: string) {
