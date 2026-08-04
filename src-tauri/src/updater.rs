@@ -367,7 +367,17 @@ fn metadata_from_update(update: &Update) -> CandidateMetadata {
             .get("sourceCommit")
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned),
-        platform: update.target.clone(),
+        platform: manifest_platform(&update.target).to_owned(),
+    }
+}
+
+fn manifest_platform(updater_target: &str) -> &str {
+    // Tauri uses the OS-only value in `Update::target`, even though its static
+    // manifest lookup selected the more specific `{os}-{arch}` entry.
+    if updater_target == "windows" {
+        PLATFORM
+    } else {
+        updater_target
     }
 }
 
@@ -567,6 +577,12 @@ mod tests {
             .unwrap();
         assert_eq!(candidate.version, "2.0.0");
         assert_eq!(candidate.source_commit, SHA);
+    }
+
+    #[test]
+    fn maps_tauri_windows_target_to_the_selected_manifest_platform() {
+        assert_eq!(manifest_platform("windows"), "windows-x86_64");
+        assert_eq!(manifest_platform("linux"), "linux");
     }
 
     #[test]
