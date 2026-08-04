@@ -1,6 +1,6 @@
 [package]
 name = "periscope"
-version = "0.4.2"
+version = "0.4.3"
 description = "A lightweight native crosshair overlay for Windows"
 authors = ["periScope contributors"]
 edition = "2024"
