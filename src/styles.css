@@ -185,8 +185,7 @@ body {
   background: #ff7182;
   box-shadow: 0 0 10px rgba(255, 113, 130, 0.65);
 }
-.status i,
-.save-state i {
+.status i {
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -405,7 +404,7 @@ h1 {
 }
 .presets {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 .preset {
@@ -472,12 +471,6 @@ h1 {
   height: 5px;
   border-radius: 50%;
   background: currentColor;
-}
-.compact {
-  transform: scale(0.7);
-}
-.open {
-  transform: scale(1.08);
 }
 .t-shape::before,
 .t-shape::after {
@@ -795,13 +788,7 @@ footer {
   align-items: center;
   gap: 8px;
   color: #718095;
-  font-size: 11px;
-}
-.save-state i {
-  width: 5px;
-  height: 5px;
-  box-shadow: none;
-  opacity: 0.65;
+  font-size: 13px;
 }
 .footer-actions {
   display: flex;

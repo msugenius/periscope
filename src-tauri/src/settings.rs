@@ -1,19 +1,115 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     #[serde(flatten)]
     pub crosshair: CrosshairSettings,
     #[serde(default)]
     pub hotkeys: HotkeySettings,
+    #[serde(default)]
+    pub active_preset: PresetId,
+    #[serde(default)]
+    pub presets: BTreeMap<PresetId, CrosshairSettings>,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            crosshair: CrosshairSettings::default(),
+            hotkeys: HotkeySettings::default(),
+            active_preset: PresetId::default(),
+            presets: default_presets(),
+        }
+    }
 }
 
 impl AppSettings {
     pub fn validated(mut self) -> Self {
         self.crosshair = self.crosshair.validated();
+        self.presets = self
+            .presets
+            .into_iter()
+            .map(|(preset, settings)| (preset, settings.validated()))
+            .collect();
+        if !self.active_preset.is_available() {
+            self.active_preset = PresetId::Classic;
+        }
+        self.presets.retain(|preset, _| preset.is_available());
+        for preset in PresetId::AVAILABLE {
+            self.presets
+                .entry(preset)
+                .or_insert_with(|| preset.default_settings());
+        }
+        self.presets
+            .insert(self.active_preset, self.crosshair.clone());
+        for settings in self.presets.values_mut() {
+            settings.inherit_shared_settings(&self.crosshair);
+        }
         self
     }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PresetId {
+    #[default]
+    Classic,
+    Compact,
+    Dot,
+    Open,
+    Precision,
+}
+
+impl PresetId {
+    pub const AVAILABLE: [Self; 3] = [Self::Classic, Self::Dot, Self::Precision];
+
+    pub fn is_available(self) -> bool {
+        Self::AVAILABLE.contains(&self)
+    }
+
+    pub fn default_settings(self) -> CrosshairSettings {
+        let mut settings = CrosshairSettings::default();
+        match self {
+            Self::Classic => {}
+            Self::Compact => {
+                settings.length = 5;
+                settings.thickness = 2;
+                settings.gap = 2;
+                settings.center_dot = false;
+            }
+            Self::Dot => {
+                settings.length = 1;
+                settings.thickness = 1;
+                settings.gap = 0;
+                settings.center_dot = true;
+                settings.dot_size = 3;
+            }
+            Self::Open => {
+                settings.length = 8;
+                settings.thickness = 1;
+                settings.gap = 6;
+                settings.center_dot = false;
+            }
+            Self::Precision => {
+                settings.length = 14;
+                settings.thickness = 1;
+                settings.gap = 2;
+                settings.center_dot = true;
+                settings.dot_size = 1;
+                settings.t_style = true;
+            }
+        }
+        settings
+    }
+}
+
+fn default_presets() -> BTreeMap<PresetId, CrosshairSettings> {
+    PresetId::AVAILABLE
+        .into_iter()
+        .map(|preset| (preset, preset.default_settings()))
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -206,6 +302,17 @@ impl Default for CrosshairSettings {
 }
 
 impl CrosshairSettings {
+    pub fn inherit_shared_settings(&mut self, current: &Self) {
+        self.enabled = current.enabled;
+        self.color.clone_from(&current.color);
+        self.opacity = current.opacity;
+        self.outline = current.outline;
+        self.outline_thickness = current.outline_thickness;
+        self.outline_color.clone_from(&current.outline_color);
+        self.x_offset = current.x_offset;
+        self.y_offset = current.y_offset;
+    }
+
     pub fn validated(mut self) -> Self {
         self.opacity = self.opacity.clamp(5, 100);
         self.length = self.length.clamp(1, 64);
@@ -235,7 +342,7 @@ fn is_hex_color(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppSettings, CrosshairSettings, HotkeySettings};
+    use super::{AppSettings, CrosshairSettings, HotkeySettings, PresetId};
 
     #[test]
     fn validation_clamps_geometry_and_normalizes_colors() {
@@ -282,7 +389,65 @@ mod tests {
         }"##;
 
         let settings: AppSettings = serde_json::from_str(json).unwrap();
+        let settings = settings.validated();
         assert_eq!(settings.hotkeys, HotkeySettings::default());
+        assert_eq!(settings.active_preset, PresetId::Classic);
+        assert_eq!(settings.presets[&PresetId::Classic].length, 20);
+        assert_eq!(settings.presets[&PresetId::Dot].dot_size, 3);
+    }
+
+    #[test]
+    fn preset_snapshots_round_trip_independently() {
+        let mut settings = AppSettings {
+            active_preset: PresetId::Dot,
+            crosshair: PresetId::Dot.default_settings(),
+            ..AppSettings::default()
+        };
+        settings.crosshair.dot_size = 9;
+        settings.crosshair.color = "#aa44cc".into();
+        settings.crosshair.opacity = 63;
+        settings.crosshair.outline = false;
+        settings.crosshair.outline_thickness = 4;
+        settings.crosshair.outline_color = "#112233".into();
+        let settings = settings.validated();
+
+        assert_eq!(settings.presets[&PresetId::Dot].dot_size, 9);
+        assert_eq!(settings.presets[&PresetId::Precision].length, 14);
+        for preset in PresetId::AVAILABLE {
+            let snapshot = &settings.presets[&preset];
+            assert_eq!(snapshot.color, "#AA44CC");
+            assert_eq!(snapshot.opacity, 63);
+            assert!(!snapshot.outline);
+            assert_eq!(snapshot.outline_thickness, 4);
+            assert_eq!(snapshot.outline_color, "#112233");
+        }
+
+        let json = serde_json::to_string(&settings).unwrap();
+        let restored: AppSettings = serde_json::from_str(&json).unwrap();
+        let restored = restored.validated();
+        assert_eq!(restored.active_preset, PresetId::Dot);
+        assert_eq!(restored.presets[&PresetId::Dot].dot_size, 9);
+        assert_eq!(restored.presets[&PresetId::Classic].dot_size, 2);
+        assert_eq!(restored.presets[&PresetId::Precision].color, "#AA44CC");
+    }
+
+    #[test]
+    fn legacy_presets_migrate_to_classic_without_losing_the_active_shape() {
+        let mut legacy_shape = PresetId::Compact.default_settings();
+        legacy_shape.length = 23;
+        let settings = AppSettings {
+            active_preset: PresetId::Compact,
+            crosshair: legacy_shape,
+            ..AppSettings::default()
+        }
+        .validated();
+
+        assert_eq!(settings.active_preset, PresetId::Classic);
+        assert_eq!(settings.crosshair.length, 23);
+        assert_eq!(settings.presets[&PresetId::Classic].length, 23);
+        assert_eq!(settings.presets.len(), 3);
+        assert!(!settings.presets.contains_key(&PresetId::Compact));
+        assert!(!settings.presets.contains_key(&PresetId::Open));
     }
 
     #[test]
