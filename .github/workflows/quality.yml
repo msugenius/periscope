@@ -1,9 +1,6 @@
 name: Quality
 
 on:
-  push:
-    branches:
-      - "**"
   pull_request:
     branches:
       - dev
@@ -18,12 +15,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: quality-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: quality-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   quality:
     name: quality
+    if: ${{ github.head_ref != 'release' && !startsWith(github.head_ref, 'release/') }}
     runs-on: windows-2025
     timeout-minutes: 10
 
@@ -68,11 +66,9 @@ jobs:
         run: npm run lint
 
       - name: Install Rust coverage tool
-        if: github.event_name == 'pull_request'
         uses: taiki-e/install-action@ae83f8e2d0da9969dc5a35e824115e142fd3c341 # cargo-llvm-cov
         with:
           tool: cargo-llvm-cov
 
       - name: Test with coverage
-        if: github.event_name == 'pull_request'
         run: npm run test:coverage

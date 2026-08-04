@@ -286,21 +286,23 @@ mod tests {
         let transparent = CrosshairSettings {
             color: "#FF0000".into(),
             opacity: 50,
+            center_dot: false,
             outline: false,
             ..CrosshairSettings::default()
         };
         let mut transparent_output = pixels();
         rasterize(&mut transparent_output, &transparent);
-        assert_eq!(pixel(&transparent_output, 128, 128), 0x7f7f_0000);
+        assert_eq!(pixel(&transparent_output, 115, 128), 0x7f7f_0000);
 
         let malformed = CrosshairSettings {
             color: "bad".into(),
+            center_dot: false,
             outline: false,
             ..CrosshairSettings::default()
         };
         let mut malformed_output = pixels();
         rasterize(&mut malformed_output, &malformed);
-        assert_eq!(pixel(&malformed_output, 128, 128), 0xffff_ffff);
+        assert_eq!(pixel(&malformed_output, 115, 128), 0xffff_ffff);
     }
 
     #[test]
@@ -318,5 +320,21 @@ mod tests {
 
         assert_eq!(pixel(&output, 0, 128), 0xff35_e8ff);
         assert_eq!(pixel(&output, 255, 128), 0xff35_e8ff);
+    }
+
+    #[test]
+    fn rasterizes_center_dot_as_an_anti_aliased_circle() {
+        let settings = CrosshairSettings {
+            dot_size: 5,
+            outline: false,
+            ..CrosshairSettings::default()
+        };
+        let mut output = pixels();
+        rasterize(&mut output, &settings);
+
+        assert_eq!(pixel(&output, 128, 128), 0xff35_e8ff);
+        assert_eq!(pixel(&output, 125, 125), 0);
+        let corner_alpha = pixel(&output, 126, 126) >> 24;
+        assert!(corner_alpha > 0 && corner_alpha < 0xff);
     }
 }

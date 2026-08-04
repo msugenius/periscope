@@ -77,6 +77,22 @@ Test-Case "GitHub pagination works without incompatible jq flags" {
     }
 }
 
+Test-Case "quality runs only for non-release pull requests" {
+    $workflow = Get-Content (Join-Path $PSScriptRoot "..\..\.github\workflows\quality.yml") -Raw
+    if ($workflow -match '(?m)^\s{2}push:') {
+        throw "Quality must not run for branch pushes."
+    }
+    foreach ($required in @(
+        'pull_request:',
+        "github.head_ref != 'release'",
+        "!startsWith(github.head_ref, 'release/')"
+    )) {
+        if (-not $workflow.Contains($required)) {
+            throw "Quality workflow is missing release-branch exclusion '$required'."
+        }
+    }
+}
+
 Test-Case "draft releases are safely replaced and verified by immutable release id" {
     $workflow = Get-Content (Join-Path $PSScriptRoot "..\..\.github\workflows\release.yml") -Raw
     if ($workflow.Contains('gh api "/repos/$env:TRUSTED_REPOSITORY/releases/tags/$env:RELEASE_TAG"')) {

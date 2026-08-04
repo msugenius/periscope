@@ -39,23 +39,9 @@ const defaultSettings = {
   outlineColor: "#000000",
   xOffset: 0,
   yOffset: 0,
-  hotkeys: { closeApp: "F3", showSettings: "F4" },
+  activePreset: "classic" as const,
+  hotkeys: { toggleCrosshair: "F2", closeApp: "F3", showSettings: "F4" },
   hotkeyErrors: {},
-};
-
-const canvasContext = {
-  beginPath: vi.fn(),
-  clearRect: vi.fn(),
-  fillRect: vi.fn(),
-  lineTo: vi.fn(),
-  moveTo: vi.fn(),
-  setTransform: vi.fn(),
-  stroke: vi.fn(),
-  fillStyle: "",
-  globalAlpha: 1,
-  lineCap: "butt",
-  lineWidth: 1,
-  strokeStyle: "",
 };
 
 async function startApp() {
@@ -65,6 +51,7 @@ async function startApp() {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   document.body.innerHTML = '<div id="app"></div>';
   mocks.invoke.mockReset();
   mocks.listen.mockReset();
@@ -73,26 +60,10 @@ beforeEach(() => {
   mocks.invoke.mockImplementation(async (command: string) => {
     if (command === "get_settings") return structuredClone(defaultSettings);
     if (command === "update_settings") return structuredClone(defaultSettings);
+    if (command === "select_preset") return structuredClone(defaultSettings);
     if (command === "get_update_status") return structuredClone(idleUpdate);
     if (command === "start_update_check") return structuredClone(idleUpdate);
     return undefined;
-  });
-  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
-    canvasContext as unknown as CanvasRenderingContext2D,
-  );
-  vi.spyOn(
-    HTMLCanvasElement.prototype,
-    "getBoundingClientRect",
-  ).mockReturnValue({
-    width: 720,
-    height: 440,
-    top: 0,
-    right: 720,
-    bottom: 440,
-    left: 0,
-    x: 0,
-    y: 0,
-    toJSON: () => ({}),
   });
 });
 
@@ -101,6 +72,42 @@ afterEach(() => {
 });
 
 describe("settings application", () => {
+  it("uses a muted master switch when the overlay is disabled", async () => {
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "get_settings") {
+        return { ...structuredClone(defaultSettings), enabled: false };
+      }
+      return undefined;
+    });
+
+    await startApp();
+
+    const masterSwitch = document.querySelector(".master-switch");
+    expect(masterSwitch?.classList).toContain("is-disabled");
+    expect(masterSwitch?.textContent).toContain("Disabled");
+  });
+
+  it("renders quick shapes as a standalone panel without a live preview", async () => {
+    await startApp();
+
+    const panel = document.querySelector(".quick-shapes-card");
+    expect(panel?.querySelector("h2")?.textContent).toBe("Quick shapes");
+    expect(panel?.querySelector("p")?.textContent).toBe(
+      "Choose a base, then fine-tune",
+    );
+    expect(document.querySelector("#preview")).toBeNull();
+    expect(document.body.textContent).not.toContain("Live preview");
+    expect(document.querySelector(".controls-column")).toBeNull();
+    expect(document.querySelector(".placement-card")).toBeNull();
+    expect(document.body.textContent).not.toContain("Placement");
+    expect(
+      document.querySelector(".shape-card .panel-heading p")?.textContent,
+    ).toBe("Relative to preset");
+    expect(
+      document.querySelector(".visibility-card .panel-heading p")?.textContent,
+    ).toBe("Shared across all presets");
+  });
+
   it("renders settings before a delayed update snapshot completes", async () => {
     const updateCalls: string[] = [];
     let resolveStatus: ((value: typeof idleUpdate) => void) | undefined;
@@ -142,6 +149,8 @@ describe("settings application", () => {
     await vi.waitFor(() =>
       expect(document.querySelector("h1")?.textContent).toBe("Hotkeys"),
     );
+    expect(document.body.textContent).toContain("Toggle crosshair");
+    expect(document.body.textContent).toContain("F2");
     expect(document.body.textContent).toContain("F3");
   });
 
@@ -153,7 +162,9 @@ describe("settings application", () => {
     await vi.waitFor(() =>
       expect(document.querySelector("[data-hotkey]")).toBeTruthy(),
     );
-    (document.querySelector("[data-hotkey]") as HTMLButtonElement).click();
+    (
+      document.querySelector('[data-hotkey="closeApp"]') as HTMLButtonElement
+    ).click();
     await vi.waitFor(() =>
       expect(mocks.invoke).toHaveBeenCalledWith("set_hotkey_recording", {
         recording: true,
@@ -180,6 +191,51 @@ describe("settings application", () => {
       "update_hotkeys",
       expect.anything(),
     );
+  });
+
+  it("clears an individual shortcut and renders it as unassigned", async () => {
+    mocks.invoke.mockImplementation(
+      async (
+        command: string,
+        payload?: { hotkeys?: typeof defaultSettings.hotkeys },
+      ) => {
+        if (command === "get_settings") return structuredClone(defaultSettings);
+        if (command === "update_hotkeys")
+          return structuredClone(payload?.hotkeys);
+        return undefined;
+      },
+    );
+    await startApp();
+    (
+      document.querySelector('[data-page="hotkeys"]') as HTMLButtonElement
+    ).click();
+    await vi.waitFor(() =>
+      expect(
+        document.querySelector('[data-clear-hotkey="closeApp"]'),
+      ).toBeTruthy(),
+    );
+
+    (
+      document.querySelector(
+        '[data-clear-hotkey="closeApp"]',
+      ) as HTMLButtonElement
+    ).click();
+
+    await vi.waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith("update_hotkeys", {
+        hotkeys: { ...defaultSettings.hotkeys, closeApp: "" },
+      }),
+    );
+    expect(
+      document.querySelector('[data-hotkey="closeApp"]')?.textContent,
+    ).toBe("Not set");
+    expect(
+      (
+        document.querySelector(
+          '[data-clear-hotkey="closeApp"]',
+        ) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
   });
 
   it("shows native hotkey errors without losing the active binding", async () => {
@@ -223,7 +279,11 @@ describe("settings application", () => {
     mocks.invoke.mockImplementation(async (command: string) => {
       if (command === "get_settings") return structuredClone(defaultSettings);
       if (command === "update_hotkeys") {
-        return { closeApp: "Control+KeyQ", showSettings: "F4" };
+        return {
+          toggleCrosshair: "F2",
+          closeApp: "Control+KeyQ",
+          showSettings: "F4",
+        };
       }
       return undefined;
     });
@@ -234,7 +294,9 @@ describe("settings application", () => {
     await vi.waitFor(() =>
       expect(document.querySelector("[data-hotkey]")).toBeTruthy(),
     );
-    (document.querySelector("[data-hotkey]") as HTMLButtonElement).click();
+    (
+      document.querySelector('[data-hotkey="closeApp"]') as HTMLButtonElement
+    ).click();
     await vi.waitFor(() =>
       expect(
         document.querySelector('[data-hotkey][aria-pressed="true"]'),
@@ -258,7 +320,7 @@ describe("settings application", () => {
     );
   });
 
-  it("wires window controls, presets, reset, and position reset", async () => {
+  it("wires window controls, persistent presets, and reset", async () => {
     mocks.invoke.mockImplementation(async (command: string) => {
       if (command === "get_settings") return structuredClone(defaultSettings);
       if (command === "reset_settings") {
@@ -271,15 +333,15 @@ describe("settings application", () => {
       }
       if (command === "update_settings")
         return structuredClone(defaultSettings);
+      if (command === "select_preset") return structuredClone(defaultSettings);
       return undefined;
     });
     await startApp();
 
     (document.querySelector("#minimize") as HTMLButtonElement).click();
     (
-      document.querySelector('[data-preset="compact"]') as HTMLButtonElement
+      document.querySelector('[data-preset="dot"]') as HTMLButtonElement
     ).click();
-    (document.querySelector("#center-position") as HTMLButtonElement).click();
     (document.querySelector("#reset") as HTMLButtonElement).click();
     await vi.waitFor(() =>
       expect(mocks.invoke).toHaveBeenCalledWith("minimize_settings"),
@@ -287,55 +349,87 @@ describe("settings application", () => {
     await vi.waitFor(() =>
       expect(mocks.invoke).toHaveBeenCalledWith("reset_settings"),
     );
-    expect(mocks.invoke).toHaveBeenCalledWith(
-      "update_settings",
-      expect.anything(),
-    );
+    expect(mocks.invoke).toHaveBeenCalledWith("select_preset", {
+      preset: "dot",
+    });
   });
 
-  it("applies every preset at half-size geometry", async () => {
-    const appliedSettings: Array<typeof defaultSettings> = [];
-    mocks.invoke.mockImplementation(
-      async (
-        command: string,
-        payload?: { settings?: typeof defaultSettings },
-      ) => {
-        if (command === "get_settings") return structuredClone(defaultSettings);
-        if (command === "update_settings" && payload?.settings) {
-          appliedSettings.push(structuredClone(payload.settings));
-          return structuredClone(payload.settings);
-        }
-        return undefined;
-      },
-    );
-    await startApp();
-
+  it("restores every saved preset and moves the active highlight", async () => {
+    const selectedPresets: string[] = [];
     const presets = {
       classic: { length: 10, thickness: 1, gap: 3, dotSize: 2 },
-      compact: { length: 5, thickness: 2, gap: 2 },
-      dot: { length: 1, thickness: 1, gap: 0, dotSize: 3 },
-      open: { length: 8, thickness: 1, gap: 6 },
+      dot: { length: 1, thickness: 1, gap: 0, dotSize: 5 },
       precision: {
-        length: 14,
+        length: 18,
         thickness: 1,
         gap: 2,
         dotSize: 1,
         tStyle: true,
       },
     };
+    mocks.invoke.mockImplementation(
+      async (command: string, payload?: { preset?: keyof typeof presets }) => {
+        if (command === "get_settings") return structuredClone(defaultSettings);
+        if (command === "select_preset" && payload?.preset) {
+          selectedPresets.push(payload.preset);
+          return {
+            ...structuredClone(defaultSettings),
+            ...presets[payload.preset],
+          };
+        }
+        return undefined;
+      },
+    );
+    await startApp();
 
     expect(
       document.querySelector('[data-preset="precision"]')?.textContent,
     ).toContain("T-Shape");
+    expect(document.querySelectorAll("[data-preset]")).toHaveLength(3);
+    expect(document.body.textContent).not.toContain("Compact");
+    expect(document.body.textContent).not.toContain("Open");
 
     for (const [name, expected] of Object.entries(presets)) {
       (
         document.querySelector(`[data-preset="${name}"]`) as HTMLButtonElement
       ).click();
-      await vi.waitFor(() =>
-        expect(appliedSettings.at(-1)).toMatchObject(expected),
-      );
+      await vi.waitFor(() => {
+        expect(selectedPresets.at(-1)).toBe(name);
+        expect(
+          document
+            .querySelector(`[data-preset="${name}"]`)
+            ?.classList.contains("active"),
+        ).toBe(true);
+        expect(
+          (document.querySelector("#length") as HTMLInputElement).value,
+        ).toBe(String(expected.length));
+      });
     }
+  });
+
+  it("restores the saved active preset on startup", async () => {
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "get_settings") {
+        return {
+          ...structuredClone(defaultSettings),
+          activePreset: "dot",
+          dotSize: 7,
+        };
+      }
+      return undefined;
+    });
+
+    await startApp();
+
+    const dot = document.querySelector('[data-preset="dot"]');
+    expect(dot?.classList).toContain("active");
+    expect(dot?.getAttribute("aria-pressed")).toBe("true");
+    expect(
+      document.querySelector('[data-preset="classic"]')?.classList,
+    ).not.toContain("active");
+    expect((document.querySelector("#dotSize") as HTMLInputElement).value).toBe(
+      "7",
+    );
   });
 
   it("reports a settings save failure and clears it after recovery", async () => {

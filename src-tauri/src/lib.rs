@@ -10,7 +10,7 @@ use hotkeys::{HotkeyAction, HotkeyController};
 use overlay::OverlayController;
 use persistence::{load_settings, persist_settings};
 use serde::Serialize;
-use settings::{AppSettings, CrosshairSettings, HotkeySettings};
+use settings::{AppSettings, CrosshairSettings, HotkeySettings, PresetId};
 use std::{
     collections::BTreeMap,
     path::PathBuf,
@@ -39,20 +39,17 @@ struct AppState {
 struct SettingsView {
     #[serde(flatten)]
     crosshair: CrosshairSettings,
+    active_preset: PresetId,
     hotkeys: HotkeySettings,
     hotkey_errors: BTreeMap<String, String>,
 }
 
 #[tauri::command]
 fn get_settings(state: State<'_, AppState>) -> SettingsView {
-    let crosshair = state
-        .settings
-        .lock()
-        .expect("settings lock poisoned")
-        .crosshair
-        .clone();
+    let persisted = state.settings.lock().expect("settings lock poisoned");
     SettingsView {
-        crosshair,
+        crosshair: persisted.crosshair.clone(),
+        active_preset: persisted.active_preset,
         hotkeys: state.hotkeys.settings(),
         hotkey_errors: state.hotkeys.errors(),
     }
@@ -70,13 +67,57 @@ fn update_settings(
         .lock()
         .map_err(|_| "settings lock poisoned")?;
     persisted.crosshair = settings.clone();
+    let active_preset = persisted.active_preset;
+    persisted.presets.insert(active_preset, settings.clone());
+    for preset in persisted.presets.values_mut() {
+        preset.inherit_shared_settings(&settings);
+    }
     persist_settings(&state.settings_path, &persisted)?;
     Ok(settings)
 }
 
 #[tauri::command]
 fn reset_settings(state: State<'_, AppState>) -> Result<CrosshairSettings, String> {
-    update_settings(CrosshairSettings::default(), state)
+    let mut settings = {
+        let persisted = state
+            .settings
+            .lock()
+            .map_err(|_| "settings lock poisoned")?;
+        let mut settings = persisted.active_preset.default_settings();
+        settings.inherit_shared_settings(&persisted.crosshair);
+        settings
+    };
+    settings = settings.validated();
+    update_settings(settings, state)
+}
+
+#[tauri::command]
+fn select_preset(
+    preset: PresetId,
+    state: State<'_, AppState>,
+) -> Result<CrosshairSettings, String> {
+    if !preset.is_available() {
+        return Err("Preset is no longer available.".into());
+    }
+    let mut persisted = state
+        .settings
+        .lock()
+        .map_err(|_| "settings lock poisoned")?;
+    let mut selected = persisted
+        .presets
+        .get(&preset)
+        .cloned()
+        .unwrap_or_else(|| preset.default_settings());
+    selected.inherit_shared_settings(&persisted.crosshair);
+
+    let mut next = persisted.clone();
+    next.active_preset = preset;
+    next.crosshair = selected.clone();
+    persist_settings(&state.settings_path, &next)?;
+    *persisted = next;
+    drop(persisted);
+    state.overlay.update(selected.clone());
+    Ok(selected)
 }
 
 fn apply_hotkeys(
@@ -150,8 +191,8 @@ fn show_settings(app: &AppHandle) -> tauri::Result<()> {
     }
     WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
         .title("periScope")
-        .inner_size(1300.0, 1000.0)
-        .min_inner_size(900.0, 650.0)
+        .inner_size(1050.0, 750.0)
+        .min_inner_size(1050.0, 750.0)
         .center()
         .decorations(false)
         .transparent(true)
@@ -165,6 +206,15 @@ fn quit_app(app: &AppHandle) {
         .quitting
         .store(true, Ordering::Release);
     app.exit(0);
+}
+
+fn toggle_crosshair(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    if let Ok(mut settings) = state.settings.lock() {
+        settings.crosshair.enabled = !settings.crosshair.enabled;
+        state.overlay.update(settings.crosshair.clone());
+        let _ = persist_settings(&state.settings_path, &settings);
+    }
 }
 
 fn tray_icon() -> tauri::image::Image<'static> {
@@ -215,12 +265,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                 let _ = show_settings(app);
             }
             "toggle" => {
-                let state = app.state::<AppState>();
-                if let Ok(mut settings) = state.settings.lock() {
-                    settings.crosshair.enabled = !settings.crosshair.enabled;
-                    state.overlay.update(settings.crosshair.clone());
-                    let _ = persist_settings(&state.settings_path, &settings);
-                }
+                toggle_crosshair(app);
             }
             "quit" => {
                 quit_app(app);
@@ -241,6 +286,7 @@ pub fn run() {
                     let state = app.state::<AppState>();
                     if let Some(action) = state.hotkeys.handle_event(shortcut, event) {
                         match action {
+                            HotkeyAction::ToggleCrosshair => toggle_crosshair(app),
                             HotkeyAction::CloseApp => quit_app(app),
                             HotkeyAction::ShowSettings => {
                                 let _ = show_settings(app);
@@ -277,6 +323,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_settings,
             update_settings,
+            select_preset,
             reset_settings,
             update_hotkeys,
             reset_hotkeys,
@@ -349,12 +396,16 @@ mod tests {
         persist_settings(&path, &settings).unwrap();
 
         settings.crosshair.length = 37;
+        settings.hotkeys.toggle_crosshair = "Control+F2".into();
         settings.hotkeys.close_app = "Control+F3".into();
+        settings.hotkeys.show_settings.clear();
         persist_settings(&path, &settings).unwrap();
         let loaded = load_settings(&path);
 
         assert_eq!(loaded.crosshair.length, 37);
+        assert_eq!(loaded.hotkeys.toggle_crosshair, "Control+F2");
         assert_eq!(loaded.hotkeys.close_app, "Control+F3");
+        assert!(loaded.hotkeys.show_settings.is_empty());
         assert!(
             fs::read_to_string(&path)
                 .unwrap()

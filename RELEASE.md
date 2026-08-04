@@ -50,7 +50,9 @@ git push -u origin $branch
 gh pr create --base dev --head $branch --title "chore: release $($branch.Replace('release/', ''))" --body "Prepare the next periScope release."
 ```
 
-Merge that PR into `dev`. After `dev` is green, open and merge the promotion PR:
+Release-branch PRs intentionally skip the GitHub Quality workflow because the
+preparer already ran those checks locally. Review and merge that PR into `dev`,
+then open the promotion PR:
 
 ```powershell
 git switch dev
