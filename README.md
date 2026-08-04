@@ -188,9 +188,11 @@ npm run lint
 npm run test:coverage
 ```
 
-Every branch push runs formatting and linting. Pull requests targeting `dev` or
-`master` additionally run both coverage-gated test suites. Repository rules
-should require the single stable `Quality / quality` check before merge.
+Pull requests targeting `dev` or `master` run formatting, linting, and both
+coverage-gated test suites. Pushes do not run the workflow. PRs whose source is
+`release` or starts with `release/` skip it because the release preparer runs
+the same gates locally. Repository rules should require the single stable
+`Quality / quality` check where applicable.
 
 ### Windows releases
 
