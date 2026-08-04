@@ -84,6 +84,7 @@ export function renderUpdateSnapshot(
   host.removeAttribute("data-update-action");
   host.removeAttribute("role");
   host.removeAttribute("title");
+  host.style.removeProperty("--update-progress");
 
   const button = host instanceof HTMLButtonElement ? host : undefined;
   if (button) {
@@ -137,11 +138,13 @@ export function renderUpdateSnapshot(
       `Update periScope to version ${candidate.version}`,
     );
     if (button) {
-      button.disabled = false;
-      button.onclick = () => {
-        button.disabled = true;
-        onAction?.("install", candidate.version);
-      };
+      button.disabled = !onAction;
+      if (onAction) {
+        button.onclick = () => {
+          button.disabled = true;
+          onAction("install", candidate.version);
+        };
+      }
     }
     return;
   }
@@ -152,6 +155,7 @@ export function renderUpdateSnapshot(
     if (total && total > 0) {
       const percent = Math.min(100, Math.round((downloaded / total) * 100));
       renderBadge(`Downloading ${percent}%`);
+      host.style.setProperty("--update-progress", `${percent}%`);
     } else {
       renderBadge("Downloading…");
     }

@@ -40,7 +40,7 @@ describe("update status rendering", () => {
     expect(element.title).toContain("<img src=x");
     expect(element.querySelector("img")).toBeNull();
     expect(element.dataset.updateAction).toBe("install");
-    expect(element.disabled).toBe(false);
+    expect(element.disabled).toBe(true);
   });
 
   it("renders up-to-date and safe failure states without an offer", () => {
@@ -180,9 +180,11 @@ describe("update bridge", () => {
     });
     expect(element.textContent).toContain("Downloading 50%");
     expect(element.classList).toContain("update-downloading");
+    expect(element.style.getPropertyValue("--update-progress")).toBe("50%");
 
     renderUpdateSnapshot(element, { ...base, phase: "installing", candidate });
     expect(element.textContent).toContain("Installing");
+    expect(element.style.getPropertyValue("--update-progress")).toBe("");
 
     renderUpdateSnapshot(element, {
       ...base,
