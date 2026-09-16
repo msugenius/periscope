@@ -2,6 +2,17 @@
 
 **Configured**: 2026-07-31
 
+**Repair (2026-09-16)**: restored the public key `E78508C2EF416E0D` used by
+the published `v0.4.2` release. The later `fix/key-mismatch` change introduced
+a different public key with a second Base64 layer; this prevented `v0.4.3`
+from being signed. No production private key or password was changed during
+this repair. Current environment secrets still require verification by the
+release preflight; the historical provisioning record below does not prove
+their present values.
+
+For checked key generation, exact secret names, local verification, and the
+release flow, see [Signing setup and release preparation](../../../README.md#signing-setup-and-release-preparation).
+
 ## Trust material
 
 - A password-protected Tauri updater keypair was generated for the stable Windows update channel.
