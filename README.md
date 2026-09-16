@@ -218,9 +218,11 @@ rotation release.
 
 #### Signing setup and release preparation
 
-The configured public key is the original `v0.4.2` key (`E78508C2EF416E0D`).
-Keep the existing private key and password if they still match; a new key is
-not required for each release. The release job signs a temporary probe and
+The configured public key is `FB899533C1FA038C`, matching the signing key ID
+observed in release run `35082018929`. Keep the current private key and password;
+a new key is not required for each release. Installations of `v0.4.2` trust the
+previous key (`E78508C2EF416E0D`) and must install the first release using this
+key manually. The release job signs a temporary probe and
 cryptographically verifies it against the configured public key before building.
 Environment secrets in `release` override repository secrets of the same name.
 
