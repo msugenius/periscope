@@ -174,14 +174,6 @@ fn hide_settings(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-fn minimize_settings(app: AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("main") {
-        window.minimize().map_err(|error| error.to_string())?;
-    }
-    Ok(())
-}
-
 fn show_settings(app: &AppHandle) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window("main") {
         window.show()?;
@@ -329,7 +321,6 @@ pub fn run() {
             reset_hotkeys,
             set_hotkey_recording,
             hide_settings,
-            minimize_settings,
             updater::get_update_status,
             updater::start_update_check,
             updater::dismiss_update,

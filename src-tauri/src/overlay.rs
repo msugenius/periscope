@@ -24,8 +24,9 @@ mod platform {
             WindowsAndMessaging::{
                 CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, GetSystemMetrics,
                 HWND_TOPMOST, MSG, PostMessageW, RegisterClassW, SM_CXSCREEN, SM_CYSCREEN, SW_HIDE,
-                SW_SHOWNOACTIVATE, ShowWindow, TranslateMessage, ULW_ALPHA, UpdateLayeredWindow,
-                WM_APP, WM_DESTROY, WM_DISPLAYCHANGE, WM_DPICHANGED, WM_SETTINGCHANGE, WNDCLASSW,
+                SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetTimer, SetWindowPos,
+                ShowWindow, TranslateMessage, ULW_ALPHA, UpdateLayeredWindow, WM_APP, WM_DESTROY,
+                WM_DISPLAYCHANGE, WM_DPICHANGED, WM_SETTINGCHANGE, WM_TIMER, WNDCLASSW,
                 WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
                 WS_EX_TRANSPARENT, WS_POPUP,
             },
@@ -33,6 +34,8 @@ mod platform {
     };
 
     const WM_REDRAW_OVERLAY: u32 = WM_APP + 41;
+    const TOPMOST_TIMER_ID: usize = 1;
+    const TOPMOST_REFRESH_MS: u32 = 500;
     static SETTINGS: OnceLock<Arc<RwLock<CrosshairSettings>>> = OnceLock::new();
     static OVERLAY_HWND: AtomicIsize = AtomicIsize::new(0);
 
@@ -74,6 +77,10 @@ mod platform {
         match message {
             WM_REDRAW_OVERLAY | WM_DISPLAYCHANGE | WM_SETTINGCHANGE | WM_DPICHANGED => {
                 unsafe { redraw(hwnd) };
+                0
+            }
+            WM_TIMER if wparam == TOPMOST_TIMER_ID => {
+                unsafe { keep_on_top(hwnd) };
                 0
             }
             WM_DESTROY => {
@@ -121,6 +128,7 @@ mod platform {
                 return;
             }
             OVERLAY_HWND.store(hwnd as isize, Ordering::Release);
+            SetTimer(hwnd, TOPMOST_TIMER_ID, TOPMOST_REFRESH_MS, None);
             redraw(hwnd);
 
             let mut message: MSG = mem::zeroed();
@@ -209,12 +217,26 @@ mod platform {
                 ULW_ALPHA,
             );
             ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+            keep_on_top(hwnd);
 
             SelectObject(memory_dc, previous);
             DeleteObject(bitmap as HGDIOBJ);
             DeleteDC(memory_dc);
             ReleaseDC(ptr::null_mut(), screen_dc);
-            let _ = HWND_TOPMOST;
+        }
+    }
+
+    unsafe fn keep_on_top(hwnd: HWND) {
+        unsafe {
+            SetWindowPos(
+                hwnd,
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
         }
     }
 }

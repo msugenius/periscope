@@ -176,7 +176,7 @@ function renderShell() {
           <button id="update-status" class="status" type="button" hidden></button>
         </div>
         <div class="window-actions">
-          <button id="minimize" aria-label="Minimize">${icon("minus")}</button>
+          <button id="minimize" aria-label="Hide settings">${icon("minus")}</button>
           <button id="close" aria-label="Hide settings">${icon("close")}</button>
         </div>
       </header>
@@ -219,17 +219,13 @@ function bindEvents() {
     input.addEventListener(eventName, () => updateFromInput(input));
   });
 
-  document
-    .querySelector("#minimize")
-    ?.addEventListener("click", () => invoke("minimize_settings"));
-  document.querySelector("#close")?.addEventListener("click", async () => {
+  const hideSettings = async () => {
     await stopRecording();
     await invoke("hide_settings");
-  });
-  document.querySelector("#hide")?.addEventListener("click", async () => {
-    await stopRecording();
-    await invoke("hide_settings");
-  });
+  };
+  document.querySelector("#minimize")?.addEventListener("click", hideSettings);
+  document.querySelector("#close")?.addEventListener("click", hideSettings);
+  document.querySelector("#hide")?.addEventListener("click", hideSettings);
   document.querySelector("#reset")?.addEventListener("click", async () => {
     const crosshair = await invoke<CrosshairSettings>("reset_settings");
     settings = { ...settings, ...crosshair };
