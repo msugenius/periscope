@@ -344,7 +344,7 @@ describe("settings application", () => {
     ).click();
     (document.querySelector("#reset") as HTMLButtonElement).click();
     await vi.waitFor(() =>
-      expect(mocks.invoke).toHaveBeenCalledWith("minimize_settings"),
+      expect(mocks.invoke).toHaveBeenCalledWith("hide_settings"),
     );
     await vi.waitFor(() =>
       expect(mocks.invoke).toHaveBeenCalledWith("reset_settings"),
