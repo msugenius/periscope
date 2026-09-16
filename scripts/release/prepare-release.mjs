@@ -258,6 +258,7 @@ async function main() {
   }
 
   const current = agreedVersion();
+  runPackageManager(["run", "signing:check", "--", "--public-only"]);
   const version = await selectVersion(current);
   parseVersion(version);
   if (compareVersions(version, current) <= 0) {
@@ -311,6 +312,7 @@ async function main() {
     "scripts/release/Test-ReleasePipeline.ps1",
   ]);
   runPackageManager(["run", "format:check"]);
+  runPackageManager(["run", "test:signing"]);
   runPackageManager(["run", "lint"]);
   runPackageManager(["run", "test:coverage"]);
   run("git", ["diff", "--check"]);

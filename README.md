@@ -179,6 +179,7 @@ working branch → dev → master
 
 `dev` is the integration branch and `master` is the stable release branch.
 Working branches must not be merged directly into `master`.
+Dependabot updates target `dev` and follow the same promotion path.
 
 Before opening a pull request, run the same commands used by the required
 `Quality / quality` check:
@@ -214,6 +215,67 @@ Only the matching public key belongs in `src-tauri/tauri.conf.json`. If the
 private key is lost, existing clients cannot trust releases signed with a new
 key, so recovery must restore the original key or use a separately planned key
 rotation release.
+
+#### Signing setup and release preparation
+
+The configured public key is the original `v0.4.2` key (`E78508C2EF416E0D`).
+Keep the existing private key and password if they still match; a new key is
+not required for each release. The release job signs a temporary probe and
+cryptographically verifies it against the configured public key before building.
+Environment secrets in `release` override repository secrets of the same name.
+
+If the original credentials cannot be recovered, generate a replacement once:
+
+```powershell
+npm ci
+npm run signing:generate
+```
+
+This uses the installed Tauri CLI, generates a random password, verifies an
+actual signature, and updates `plugins.updater.pubkey` automatically without
+additional Base64 encoding. It saves the following files outside the repository
+under `%USERPROFILE%/.tauri/periscope/signing-<timestamp>/` (the command prints
+the exact path). It never overwrites an existing output directory. To choose a
+new directory, use `npm run signing:generate -- --output-dir "D:\Secure\periscope-keys"`.
+
+In GitHub **Settings → Environments → release → Environment secrets**, set:
+
+| Secret name | Paste the entire contents of |
+| --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | `TAURI_SIGNING_PRIVATE_KEY.txt` |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD.txt` |
+
+Paste the values without quotes, file paths, or extra encoding. Keep both files
+as a secure backup. `TAURI_SIGNING_PUBLIC_KEY.txt` is a public backup; the script
+already puts its value in the config. Commit the changed config through a working
+branch PR to `dev`. New keys require existing users to install the first new
+release manually, because their installed app trusts the previous public key.
+
+To verify the saved credentials locally (replace the directory below):
+
+```powershell
+$signingDirectory = "D:\Secure\periscope-keys"
+$env:TAURI_SIGNING_PRIVATE_KEY = (Get-Content -LiteralPath "$signingDirectory\TAURI_SIGNING_PRIVATE_KEY.txt" -Raw).Trim()
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = Get-Content -LiteralPath "$signingDirectory\TAURI_SIGNING_PRIVATE_KEY_PASSWORD.txt" -Raw
+npm run signing:check
+Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY, Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+```
+
+After the fix/config PR is merged into `dev`, prepare the next version from a
+clean, up-to-date `dev`:
+
+```powershell
+git switch dev
+git pull --ff-only origin dev
+npm ci
+npm run release:prepare -- patch
+```
+
+The preparer creates `release/vX.Y.Z`, runs the local gates, and commits the five
+version declarations. Push the branch using the command it prints, merge a PR
+from `release/vX.Y.Z` into `dev`, then merge a PR from `dev` into `master`.
+Only that last merge starts the release. Rerunning an old failed run still uses
+its old merge commit and cannot pick up a public-key fix.
 
 Each successful run publishes `vMAJOR.MINOR.PATCH` with exactly four verified
 assets: the versioned x64 NSIS installer, its `.sig`, `latest.json`, and

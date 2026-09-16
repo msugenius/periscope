@@ -20,6 +20,7 @@ src-tauri/target/
 *.p12
 *.pfx
 tauri-pubkey.txt
+TAURI_SIGNING_PRIVATE_KEY*
 
 # Coverage output
 coverage/

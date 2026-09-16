@@ -106,6 +106,13 @@ jobs:
           "tag=$($disposition.Tag)" >> $env:GITHUB_OUTPUT
           "skip_publish=$skip" >> $env:GITHUB_OUTPUT
 
+      - name: Verify signing credentials against the updater public key
+        if: steps.inspect.outputs.skip_publish != 'true'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run signing:check
+
       - name: Remove cached installer outputs
         if: steps.inspect.outputs.skip_publish != 'true'
         shell: pwsh
