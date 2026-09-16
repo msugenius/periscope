@@ -59,6 +59,11 @@ jobs:
         shell: pwsh
         run: ./scripts/release/Test-ReleasePipeline.ps1
 
+      - name: Validate updater public key and signing tools
+        run: |
+          npm run signing:check -- --public-only
+          npm run test:signing
+
       - name: Check formatting
         run: npm run format:check
 
