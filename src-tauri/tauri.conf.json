@@ -47,7 +47,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU3ODUwOEMyRUY0MTZFMEQKUldRTmJrSHZ3Z2lGNTNYdVFFL3FjYWpWZ1ZTRWhtenJqNmtRa3dzOWs1bnlKWk5mUlgyam1Jek8K",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZCODk5NTMzQzFGQTAzOEMKUldTTUEvckJNNVdKKzIrR0pPRGgvbjlsRnpHeUFlZlJPUE43UFEzOEo2d1FTUS9LL0xwK3hLTXIK",
       "endpoints": [
         "https://github.com/msugenius/periscope/releases/latest/download/latest.json"
       ],

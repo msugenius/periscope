@@ -2,13 +2,19 @@
 
 **Configured**: 2026-07-31
 
-**Repair (2026-09-16)**: restored the public key `E78508C2EF416E0D` used by
-the published `v0.4.2` release. The later `fix/key-mismatch` change introduced
-a different public key with a second Base64 layer; this prevented `v0.4.3`
-from being signed. No production private key or password was changed during
-this repair. Current environment secrets still require verification by the
-release preflight; the historical provisioning record below does not prove
-their present values.
+**Repair (2026-09-16)**: the `fix/key-mismatch` change introduced public key
+`FB899533C1FA038C` with a second Base64 layer, preventing `v0.4.3` from being
+signed. The first repair restored the `v0.4.2` public key (`E78508C2EF416E0D`)
+to try to preserve compatibility with installed clients.
+
+The signing preflight in [run 35082018929](https://github.com/msugenius/periscope/actions/runs/35082018929/job/104747999984)
+then successfully decrypted the configured private key and signed a probe with
+key ID `FB899533C1FA038C`. The configuration now uses that key's public value
+from commit `daa6c1f`, with the extra Base64 layer removed. No private key or
+password was generated or changed during this repair. The next release
+preflight must verify the full signature against this corrected public key.
+Existing `v0.4.2` installations require one manual installation because they
+trust the previous public key.
 
 For checked key generation, exact secret names, local verification, and the
 release flow, see [Signing setup and release preparation](../../../README.md#signing-setup-and-release-preparation).
