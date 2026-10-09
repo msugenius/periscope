@@ -9,6 +9,7 @@ mod platform {
         ffi::c_void,
         mem, ptr,
         sync::atomic::{AtomicIsize, Ordering},
+        sync::mpsc,
         thread,
     };
     use windows_sys::Win32::{
@@ -21,23 +22,29 @@ mod platform {
         System::LibraryLoader::GetModuleHandleW,
         UI::{
             HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext},
+            Input::KeyboardAndMouse::{GetAsyncKeyState, VK_RBUTTON},
             WindowsAndMessaging::{
-                CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, GetSystemMetrics,
-                HWND_TOPMOST, MSG, PostMessageW, RegisterClassW, SM_CXSCREEN, SM_CYSCREEN, SW_HIDE,
-                SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetTimer, SetWindowPos,
-                ShowWindow, TranslateMessage, ULW_ALPHA, UpdateLayeredWindow, WM_APP, WM_DESTROY,
-                WM_DISPLAYCHANGE, WM_DPICHANGED, WM_SETTINGCHANGE, WM_TIMER, WNDCLASSW,
-                WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+                CallNextHookEx, CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW,
+                GetSystemMetrics, HHOOK, HWND_TOPMOST, MSG, PostMessageW, RegisterClassW,
+                SM_CXSCREEN, SM_CYSCREEN, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE,
+                SWP_NOSIZE, SendMessageW, SetTimer, SetWindowPos, SetWindowsHookExW, ShowWindow,
+                TranslateMessage, ULW_ALPHA, UnhookWindowsHookEx, UpdateLayeredWindow, WH_MOUSE_LL,
+                WM_APP, WM_DESTROY, WM_DISPLAYCHANGE, WM_DPICHANGED, WM_NCRBUTTONDOWN,
+                WM_NCRBUTTONUP, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETTINGCHANGE, WM_TIMER,
+                WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
                 WS_EX_TRANSPARENT, WS_POPUP,
             },
         },
     };
 
     const WM_REDRAW_OVERLAY: u32 = WM_APP + 41;
+    const WM_SET_ADS_OBSERVER: u32 = WM_APP + 42;
     const TOPMOST_TIMER_ID: usize = 1;
     const TOPMOST_REFRESH_MS: u32 = 500;
     static SETTINGS: OnceLock<Arc<RwLock<CrosshairSettings>>> = OnceLock::new();
     static OVERLAY_HWND: AtomicIsize = AtomicIsize::new(0);
+    static ADS_HOOK: AtomicIsize = AtomicIsize::new(0);
+    static ADS_DOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
     #[derive(Clone)]
     pub struct OverlayController {
@@ -48,11 +55,26 @@ mod platform {
         pub fn start(initial: CrosshairSettings) -> Self {
             let settings = Arc::new(RwLock::new(initial));
             let _ = SETTINGS.set(settings.clone());
+            let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
             thread::Builder::new()
                 .name("periscope-overlay".into())
-                .spawn(run_message_loop)
+                .spawn(move || run_message_loop(ready_sender))
                 .expect("failed to start overlay thread");
+            ready_receiver
+                .recv()
+                .expect("failed to create overlay window");
             Self { settings }
+        }
+
+        pub fn set_hide_when_ads(&self, enabled: bool) -> Result<(), String> {
+            let raw = OVERLAY_HWND.load(Ordering::Acquire);
+            if raw == 0 {
+                return Err("Overlay window is unavailable.".into());
+            }
+            if unsafe { SendMessageW(raw as HWND, WM_SET_ADS_OBSERVER, enabled as usize, 0) } == 0 {
+                return Err("Could not observe the right mouse button.".into());
+            }
+            Ok(())
         }
 
         pub fn update(&self, next: CrosshairSettings) {
@@ -75,6 +97,7 @@ mod platform {
         lparam: LPARAM,
     ) -> LRESULT {
         match message {
+            WM_SET_ADS_OBSERVER => unsafe { set_ads_observer(hwnd, wparam != 0) },
             WM_REDRAW_OVERLAY | WM_DISPLAYCHANGE | WM_SETTINGCHANGE | WM_DPICHANGED => {
                 unsafe { redraw(hwnd) };
                 0
@@ -84,6 +107,10 @@ mod platform {
                 0
             }
             WM_DESTROY => {
+                let hook = ADS_HOOK.swap(0, Ordering::AcqRel);
+                if hook != 0 {
+                    unsafe { UnhookWindowsHookEx(hook as HHOOK) };
+                }
                 OVERLAY_HWND.store(0, Ordering::Release);
                 0
             }
@@ -91,7 +118,7 @@ mod platform {
         }
     }
 
-    fn run_message_loop() {
+    fn run_message_loop(ready_sender: mpsc::SyncSender<()>) {
         unsafe {
             let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
             let instance = GetModuleHandleW(ptr::null());
@@ -128,6 +155,7 @@ mod platform {
                 return;
             }
             OVERLAY_HWND.store(hwnd as isize, Ordering::Release);
+            let _ = ready_sender.send(());
             SetTimer(hwnd, TOPMOST_TIMER_ID, TOPMOST_REFRESH_MS, None);
             redraw(hwnd);
 
@@ -142,7 +170,7 @@ mod platform {
     unsafe fn redraw(hwnd: HWND) {
         let Some(lock) = SETTINGS.get() else { return };
         let settings = lock.read().expect("settings lock poisoned").clone();
-        if !settings.enabled {
+        if !should_show(settings.enabled, ADS_DOWN.load(Ordering::Acquire)) {
             unsafe { ShowWindow(hwnd, SW_HIDE) };
             return;
         }
@@ -226,6 +254,64 @@ mod platform {
         }
     }
 
+    fn should_show(enabled: bool, ads_down: bool) -> bool {
+        enabled && !ads_down
+    }
+
+    unsafe fn set_ads_observer(hwnd: HWND, enabled: bool) -> LRESULT {
+        let active = ADS_HOOK.load(Ordering::Acquire);
+        if enabled && active == 0 {
+            let hook = unsafe {
+                SetWindowsHookExW(
+                    WH_MOUSE_LL,
+                    Some(mouse_proc),
+                    GetModuleHandleW(ptr::null()),
+                    0,
+                )
+            };
+            if hook.is_null() {
+                return 0;
+            }
+            ADS_HOOK.store(hook as isize, Ordering::Release);
+            let down = unsafe { GetAsyncKeyState(VK_RBUTTON as i32) } < 0;
+            ADS_DOWN.store(down, Ordering::Release);
+            if down {
+                unsafe { ShowWindow(hwnd, SW_HIDE) };
+            }
+        } else if !enabled && active != 0 {
+            if unsafe { UnhookWindowsHookEx(active as HHOOK) } == 0 {
+                return 0;
+            }
+            ADS_HOOK.store(0, Ordering::Release);
+            ADS_DOWN.store(false, Ordering::Release);
+            unsafe { redraw(hwnd) };
+        }
+        1
+    }
+
+    unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+        if code >= 0 {
+            let next = match wparam as u32 {
+                WM_RBUTTONDOWN | WM_NCRBUTTONDOWN => Some(true),
+                WM_RBUTTONUP | WM_NCRBUTTONUP => Some(false),
+                _ => None,
+            };
+            if let Some(down) = next
+                && ADS_DOWN.swap(down, Ordering::AcqRel) != down
+            {
+                let hwnd = OVERLAY_HWND.load(Ordering::Acquire) as HWND;
+                if !hwnd.is_null() {
+                    if down {
+                        unsafe { ShowWindow(hwnd, SW_HIDE) };
+                    } else {
+                        unsafe { PostMessageW(hwnd, WM_REDRAW_OVERLAY, 0, 0) };
+                    }
+                }
+            }
+        }
+        unsafe { CallNextHookEx(ptr::null_mut(), code, wparam, lparam) }
+    }
+
     unsafe fn keep_on_top(hwnd: HWND) {
         unsafe {
             SetWindowPos(
@@ -237,6 +323,19 @@ mod platform {
                 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
             );
+        }
+    }
+
+    #[cfg(test)]
+    mod visibility_tests {
+        use super::should_show;
+
+        #[test]
+        fn ads_hides_only_an_enabled_crosshair() {
+            assert!(should_show(true, false));
+            assert!(!should_show(true, true));
+            assert!(!should_show(false, false));
+            assert!(!should_show(false, true));
         }
     }
 }
@@ -254,6 +353,9 @@ impl OverlayController {
         Self
     }
     pub fn update(&self, _next: CrosshairSettings) {}
+    pub fn set_hide_when_ads(&self, _enabled: bool) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]

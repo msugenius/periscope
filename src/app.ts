@@ -16,6 +16,7 @@ import { connectUpdater, renderCurrentUpdate } from "./update-ui";
 type SettingsPage = "crosshair" | "hotkeys";
 
 const defaults: Settings = {
+  hideWhenAds: false,
   enabled: true,
   color: "#35E8FF",
   opacity: 100,
@@ -163,6 +164,13 @@ function renderHotkeysPage() {
         <p id="hotkey-status" class="hotkey-status ${hotkeyStatusError ? "error" : ""}" aria-live="polite">${escapeHtml(hotkeyStatus)}</p>
         <button id="reset-hotkeys" class="button secondary">Reset hotkeys</button>
       </div>
+    </section>
+    <section class="panel hotkeys-card ads-card">
+      <div class="panel-heading"><div><h2>Mouse controls</h2></div>${icon("crosshair")}</div>
+      <label class="toggle-row" for="hide-when-ads">
+        <span><strong>Hide when ADS</strong><small>Hide the crosshair while holding the right mouse button.</small></span>
+        <input id="hide-when-ads" type="checkbox" ${settings.hideWhenAds ? "checked" : ""}/><i aria-hidden="true"></i>
+      </label>
     </section>`;
 }
 
@@ -255,6 +263,29 @@ function bindEvents() {
   document
     .querySelector("#reset-hotkeys")
     ?.addEventListener("click", resetHotkeys);
+  document
+    .querySelector<HTMLInputElement>("#hide-when-ads")
+    ?.addEventListener("change", (event) => {
+      void updateHideWhenAds((event.currentTarget as HTMLInputElement).checked);
+    });
+}
+
+async function updateHideWhenAds(enabled: boolean) {
+  try {
+    settings.hideWhenAds = await invoke<boolean>("set_hide_when_ads", {
+      enabled,
+    });
+    setSaveStatus("Changes save automatically", false);
+  } catch (error) {
+    const detail =
+      typeof error === "string"
+        ? error
+        : error instanceof Error
+          ? error.message
+          : String(error);
+    setSaveStatus(`Could not save ADS setting: ${detail}`, true);
+  }
+  renderShell();
 }
 
 async function setNativeRecording(recording: boolean) {
