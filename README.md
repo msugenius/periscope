@@ -93,6 +93,9 @@ Duplicate, invalid, or unavailable shortcuts are rejected without replacing the
 previous working binding. **Reset hotkeys** restores
 <kbd>F2</kbd>/<kbd>F3</kbd>/<kbd>F4</kbd> without changing the crosshair.
 
+periScope runs one instance per Windows session. Launching it again leaves the
+existing overlay, Settings window, and tray icon untouched.
+
 ## How it works
 
 ```mermaid

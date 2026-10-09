@@ -664,6 +664,9 @@ h1 {
   max-width: 780px;
   padding: 19px;
 }
+.ads-card {
+  margin-top: 18px;
+}
 .hotkeys-card > .panel-heading {
   padding-bottom: 16px;
   border-bottom: 1px solid var(--line);

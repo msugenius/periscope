@@ -25,6 +25,7 @@ const idleUpdate = {
 };
 
 const defaultSettings = {
+  hideWhenAds: false,
   enabled: true,
   color: "#35E8FF",
   opacity: 100,
@@ -72,6 +73,60 @@ afterEach(() => {
 });
 
 describe("settings application", () => {
+  it("shows the ADS toggle on Hotkeys and saves its choice", async () => {
+    mocks.invoke.mockImplementation(
+      async (command: string, args?: { enabled: boolean }) => {
+        if (command === "get_settings") return structuredClone(defaultSettings);
+        if (command === "get_update_status") return structuredClone(idleUpdate);
+        if (command === "set_hide_when_ads") return args?.enabled;
+        return undefined;
+      },
+    );
+    await startApp();
+    document.querySelector<HTMLButtonElement>('[data-page="hotkeys"]')!.click();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#hide-when-ads")).not.toBeNull(),
+    );
+    const toggle = document.querySelector<HTMLInputElement>("#hide-when-ads")!;
+    expect(toggle.checked).toBe(false);
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith("set_hide_when_ads", {
+        enabled: true,
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(
+        document.querySelector<HTMLInputElement>("#hide-when-ads")?.checked,
+      ).toBe(true),
+    );
+  });
+
+  it("restores the ADS toggle and reports an enable error", async () => {
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "get_settings") return structuredClone(defaultSettings);
+      if (command === "get_update_status") return structuredClone(idleUpdate);
+      if (command === "set_hide_when_ads") throw "Mouse observer unavailable";
+      return undefined;
+    });
+    await startApp();
+    document.querySelector<HTMLButtonElement>('[data-page="hotkeys"]')!.click();
+    await vi.waitFor(() =>
+      expect(document.querySelector("#hide-when-ads")).not.toBeNull(),
+    );
+    const toggle = document.querySelector<HTMLInputElement>("#hide-when-ads")!;
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.waitFor(() =>
+      expect(document.querySelector(".save-state")?.textContent).toContain(
+        "Mouse observer unavailable",
+      ),
+    );
+    expect(
+      document.querySelector<HTMLInputElement>("#hide-when-ads")?.checked,
+    ).toBe(false);
+  });
   it("uses a muted master switch when the overlay is disabled", async () => {
     mocks.invoke.mockImplementation(async (command: string) => {
       if (command === "get_settings") {

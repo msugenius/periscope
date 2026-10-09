@@ -42,6 +42,7 @@ struct SettingsView {
     active_preset: PresetId,
     hotkeys: HotkeySettings,
     hotkey_errors: BTreeMap<String, String>,
+    hide_when_ads: bool,
 }
 
 #[tauri::command]
@@ -52,6 +53,7 @@ fn get_settings(state: State<'_, AppState>) -> SettingsView {
         active_preset: persisted.active_preset,
         hotkeys: state.hotkeys.settings(),
         hotkey_errors: state.hotkeys.errors(),
+        hide_when_ads: persisted.hide_when_ads,
     }
 }
 
@@ -163,6 +165,31 @@ fn reset_hotkeys(app: AppHandle, state: State<'_, AppState>) -> Result<HotkeySet
 #[tauri::command]
 fn set_hotkey_recording(recording: bool, state: State<'_, AppState>) {
     state.hotkeys.set_recording(recording);
+}
+
+#[tauri::command]
+fn set_hide_when_ads(enabled: bool, state: State<'_, AppState>) -> Result<bool, String> {
+    let mut settings = state
+        .settings
+        .lock()
+        .map_err(|_| "settings lock poisoned")?;
+    let previous = settings.hide_when_ads;
+    if previous == enabled {
+        return Ok(enabled);
+    }
+    state.overlay.set_hide_when_ads(enabled)?;
+    settings.hide_when_ads = enabled;
+    if let Err(error) = persist_settings(&state.settings_path, &settings) {
+        settings.hide_when_ads = previous;
+        let rollback_error = state.overlay.set_hide_when_ads(previous).err();
+        return Err(match rollback_error {
+            Some(rollback_error) => format!(
+                "Could not save ADS setting: {error}. Could not restore mouse observation: {rollback_error}"
+            ),
+            None => format!("Could not save ADS setting: {error}"),
+        });
+    }
+    Ok(enabled)
 }
 
 #[tauri::command]
@@ -297,6 +324,10 @@ pub fn run() {
                 .join("settings.json");
             let settings = load_settings(&settings_path);
             let overlay = OverlayController::start(settings.crosshair.clone());
+            let mut settings = settings;
+            if settings.hide_when_ads && overlay.set_hide_when_ads(true).is_err() {
+                settings.hide_when_ads = false;
+            }
             let hotkeys = HotkeyController::new(settings.hotkeys.clone());
             app.manage(AppState {
                 settings: Mutex::new(settings),
@@ -320,6 +351,7 @@ pub fn run() {
             update_hotkeys,
             reset_hotkeys,
             set_hotkey_recording,
+            set_hide_when_ads,
             hide_settings,
             updater::get_update_status,
             updater::start_update_check,
@@ -390,6 +422,7 @@ mod tests {
         settings.hotkeys.toggle_crosshair = "Control+F2".into();
         settings.hotkeys.close_app = "Control+F3".into();
         settings.hotkeys.show_settings.clear();
+        settings.hide_when_ads = true;
         persist_settings(&path, &settings).unwrap();
         let loaded = load_settings(&path);
 
@@ -397,6 +430,7 @@ mod tests {
         assert_eq!(loaded.hotkeys.toggle_crosshair, "Control+F2");
         assert_eq!(loaded.hotkeys.close_app, "Control+F3");
         assert!(loaded.hotkeys.show_settings.is_empty());
+        assert!(loaded.hide_when_ads);
         assert!(
             fs::read_to_string(&path)
                 .unwrap()
