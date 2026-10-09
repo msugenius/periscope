@@ -9,6 +9,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub hotkeys: HotkeySettings,
     #[serde(default)]
+    pub hide_when_ads: bool,
+    #[serde(default)]
     pub active_preset: PresetId,
     #[serde(default)]
     pub presets: BTreeMap<PresetId, CrosshairSettings>,
@@ -19,6 +21,7 @@ impl Default for AppSettings {
         Self {
             crosshair: CrosshairSettings::default(),
             hotkeys: HotkeySettings::default(),
+            hide_when_ads: false,
             active_preset: PresetId::default(),
             presets: default_presets(),
         }
@@ -416,6 +419,7 @@ mod tests {
         let settings: AppSettings = serde_json::from_str(json).unwrap();
         let settings = settings.validated();
         assert_eq!(settings.hotkeys, HotkeySettings::default());
+        assert!(!settings.hide_when_ads);
         assert_eq!(settings.active_preset, PresetId::Classic);
         assert_eq!(settings.presets[&PresetId::Classic].length, 20);
         assert_eq!(settings.presets[&PresetId::Dot].dot_size, 3);
@@ -541,5 +545,18 @@ mod tests {
             serde_json::from_str(r#"{"closeApp":"F3","showSettings":"F4"}"#).unwrap();
 
         assert_eq!(settings.toggle_crosshair, "F2");
+    }
+
+    #[test]
+    fn hide_when_ads_is_independent_of_presets_and_hotkeys() {
+        let mut settings = AppSettings {
+            hide_when_ads: true,
+            ..AppSettings::default()
+        };
+        settings.active_preset = PresetId::Dot;
+        settings.hotkeys = HotkeySettings::default();
+        let restored: AppSettings =
+            serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+        assert!(restored.validated().hide_when_ads);
     }
 }

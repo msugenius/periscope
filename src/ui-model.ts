@@ -13,6 +13,7 @@ export type HotkeyErrors = Partial<
 export type PresetId = "classic" | "dot" | "precision";
 
 export type Settings = {
+  hideWhenAds: boolean;
   enabled: boolean;
   color: string;
   opacity: number;
@@ -34,7 +35,7 @@ export type Settings = {
 
 export type CrosshairSettings = Omit<
   Settings,
-  "activePreset" | "hotkeys" | "hotkeyErrors"
+  "activePreset" | "hotkeys" | "hotkeyErrors" | "hideWhenAds"
 >;
 export type CrosshairKey = keyof CrosshairSettings;
 
