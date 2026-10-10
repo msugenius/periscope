@@ -2,6 +2,7 @@ export type HotkeySettings = {
   toggleCrosshair: string;
   closeApp: string;
   showSettings: string;
+  toggleAds: string;
 };
 
 export type HotkeyName = keyof HotkeySettings;

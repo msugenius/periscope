@@ -12,6 +12,7 @@ pub enum HotkeyAction {
     ToggleCrosshair,
     CloseApp,
     ShowSettings,
+    ToggleAds,
 }
 
 #[derive(Clone)]
@@ -286,6 +287,13 @@ fn parse_pair(
             parse_shortcut("Show settings", &settings.show_settings)?,
         ));
     }
+    if !settings.toggle_ads.is_empty() {
+        shortcuts.push((
+            "toggleAds",
+            HotkeyAction::ToggleAds,
+            parse_shortcut("Hide when ADS", &settings.toggle_ads)?,
+        ));
+    }
     Ok(shortcuts)
 }
 
@@ -300,6 +308,7 @@ fn action_label(action: HotkeyAction) -> &'static str {
         HotkeyAction::ToggleCrosshair => "Toggle crosshair",
         HotkeyAction::CloseApp => "Close app",
         HotkeyAction::ShowSettings => "Show settings",
+        HotkeyAction::ToggleAds => "Hide when ADS",
     }
 }
 
@@ -316,7 +325,7 @@ mod tests {
             ..HotkeySettings::default()
         })
         .unwrap();
-        assert_eq!(parsed.len(), 3);
+        assert_eq!(parsed.len(), 4);
         assert_eq!(parsed[0].0, "toggleCrosshair");
         assert_eq!(parsed[0].1, HotkeyAction::ToggleCrosshair);
         assert_eq!(parsed[1].0, "closeApp");
@@ -331,9 +340,10 @@ mod tests {
             ..HotkeySettings::default()
         })
         .unwrap();
-        assert_eq!(one_unset.len(), 2);
+        assert_eq!(one_unset.len(), 3);
         assert_eq!(one_unset[0].1, HotkeyAction::ToggleCrosshair);
         assert_eq!(one_unset[1].1, HotkeyAction::ShowSettings);
+        assert_eq!(one_unset[2].1, HotkeyAction::ToggleAds);
     }
 
     #[test]
