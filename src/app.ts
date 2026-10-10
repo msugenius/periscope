@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   displayHotkey,
   escapeHtml,
@@ -32,7 +33,12 @@ const defaults: Settings = {
   xOffset: 0,
   yOffset: 0,
   activePreset: "classic",
-  hotkeys: { toggleCrosshair: "F2", closeApp: "F3", showSettings: "F4" },
+  hotkeys: {
+    toggleCrosshair: "F2",
+    closeApp: "F3",
+    showSettings: "F4",
+    toggleAds: "F5",
+  },
   hotkeyErrors: {},
 };
 
@@ -159,18 +165,13 @@ function renderHotkeysPage() {
         ${hotkeyRow("toggleCrosshair", "Toggle crosshair", "Enable or disable the crosshair overlay without opening Settings.", "F2")}
         ${hotkeyRow("closeApp", "Close app", "Exit periScope, including the overlay and tray icon.", "F3")}
         ${hotkeyRow("showSettings", "Show settings", "Open, restore, and focus this Settings window.", "F4")}
+        ${hotkeyRow("toggleAds", "Hide when ADS", "Toggle hiding the crosshair while holding the right mouse button.", "F5")}
       </div>
+      <p id="ads-status" class="ads-status" aria-live="polite">Hide when ADS is ${settings.hideWhenAds ? "on" : "off"}.</p>
       <div class="hotkeys-actions">
         <p id="hotkey-status" class="hotkey-status ${hotkeyStatusError ? "error" : ""}" aria-live="polite">${escapeHtml(hotkeyStatus)}</p>
         <button id="reset-hotkeys" class="button secondary">Reset hotkeys</button>
       </div>
-    </section>
-    <section class="panel hotkeys-card ads-card">
-      <div class="panel-heading"><div><h2>Mouse controls</h2></div>${icon("crosshair")}</div>
-      <label class="toggle-row" for="hide-when-ads">
-        <span><strong>Hide when ADS</strong><small>Hide the crosshair while holding the right mouse button.</small></span>
-        <input id="hide-when-ads" type="checkbox" ${settings.hideWhenAds ? "checked" : ""}/><i aria-hidden="true"></i>
-      </label>
     </section>`;
 }
 
@@ -263,29 +264,6 @@ function bindEvents() {
   document
     .querySelector("#reset-hotkeys")
     ?.addEventListener("click", resetHotkeys);
-  document
-    .querySelector<HTMLInputElement>("#hide-when-ads")
-    ?.addEventListener("change", (event) => {
-      void updateHideWhenAds((event.currentTarget as HTMLInputElement).checked);
-    });
-}
-
-async function updateHideWhenAds(enabled: boolean) {
-  try {
-    settings.hideWhenAds = await invoke<boolean>("set_hide_when_ads", {
-      enabled,
-    });
-    setSaveStatus("Changes save automatically", false);
-  } catch (error) {
-    const detail =
-      typeof error === "string"
-        ? error
-        : error instanceof Error
-          ? error.message
-          : String(error);
-    setSaveStatus(`Could not save ADS setting: ${detail}`, true);
-  }
-  renderShell();
 }
 
 async function setNativeRecording(recording: boolean) {
@@ -365,7 +343,9 @@ async function handleRecordingKeyDown(event: KeyboardEvent) {
         ? "Toggle crosshair"
         : key === "closeApp"
           ? "Close app"
-          : "Show settings";
+          : key === "showSettings"
+            ? "Show settings"
+            : "Hide when ADS";
     hotkeyStatus = `${label} saved as ${displayHotkey(accepted[key])}.`;
     hotkeyStatusError = false;
     renderShell();
@@ -405,7 +385,9 @@ async function clearHotkey(key: HotkeyName) {
       ? "Toggle crosshair"
       : key === "closeApp"
         ? "Close app"
-        : "Show settings";
+        : key === "showSettings"
+          ? "Show settings"
+          : "Hide when ADS";
   await updateHotkeys(
     { ...settings.hotkeys, [key]: "" },
     () => `${label} shortcut cleared.`,
@@ -427,7 +409,7 @@ async function resetHotkeys() {
   try {
     settings.hotkeys = await invoke<HotkeySettings>("reset_hotkeys");
     settings.hotkeyErrors = {};
-    hotkeyStatus = "Hotkeys reset to F2, F3, and F4.";
+    hotkeyStatus = "Hotkeys reset to F2, F3, F4, and F5.";
     hotkeyStatusError = false;
   } catch (error) {
     showHotkeyError(error, false);
@@ -547,10 +529,29 @@ export async function boot() {
   appWindow.__periScopeCleanup?.();
   const events = new AbortController();
   let updaterCleanup: (() => void) | undefined;
+  let adsCleanup: (() => void) | undefined;
+  let adsErrorCleanup: (() => void) | undefined;
   appWindow.__periScopeCleanup = () => {
     events.abort();
     updaterCleanup?.();
+    adsCleanup?.();
+    adsErrorCleanup?.();
   };
+  void listen<boolean>("hide-when-ads-changed", (event) => {
+    settings.hideWhenAds = event.payload;
+    const status = document.querySelector<HTMLElement>("#ads-status");
+    if (status)
+      status.textContent = `Hide when ADS is ${event.payload ? "on" : "off"}.`;
+  }).then((cleanup) => {
+    if (events.signal.aborted) cleanup();
+    else adsCleanup = cleanup;
+  });
+  void listen<string>("hide-when-ads-error", (event) => {
+    setSaveStatus(`Could not change ADS mode: ${event.payload}`, true);
+  }).then((cleanup) => {
+    if (events.signal.aborted) cleanup();
+    else adsErrorCleanup = cleanup;
+  });
   void connectUpdater(
     document.querySelector<HTMLElement>("#update-status")!,
   ).then((cleanup) => {

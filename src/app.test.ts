@@ -41,7 +41,12 @@ const defaultSettings = {
   xOffset: 0,
   yOffset: 0,
   activePreset: "classic" as const,
-  hotkeys: { toggleCrosshair: "F2", closeApp: "F3", showSettings: "F4" },
+  hotkeys: {
+    toggleCrosshair: "F2",
+    closeApp: "F3",
+    showSettings: "F4",
+    toggleAds: "F5",
+  },
   hotkeyErrors: {},
 };
 
@@ -73,59 +78,68 @@ afterEach(() => {
 });
 
 describe("settings application", () => {
-  it("shows the ADS toggle on Hotkeys and saves its choice", async () => {
+  it("shows the ADS hotkey and updates its active state from native events", async () => {
+    await startApp();
+    document.querySelector<HTMLButtonElement>('[data-page="hotkeys"]')!.click();
+    await vi.waitFor(() =>
+      expect(
+        document.querySelector('[data-hotkey="toggleAds"]'),
+      ).not.toBeNull(),
+    );
+    expect(
+      document.querySelector('[data-hotkey="toggleAds"]')?.textContent,
+    ).toBe("F5");
+    expect(document.querySelector("#ads-status")?.textContent).toContain("off");
+    await vi.waitFor(() =>
+      expect(mocks.listen).toHaveBeenCalledWith(
+        "hide-when-ads-changed",
+        expect.any(Function),
+      ),
+    );
+    const listener = mocks.listen.mock.calls.find(
+      ([name]) => name === "hide-when-ads-changed",
+    )![1];
+    listener({ payload: true });
+    expect(document.querySelector("#ads-status")?.textContent).toContain("on");
+  });
+
+  it("records an ADS shortcut through the normal hotkey flow", async () => {
     mocks.invoke.mockImplementation(
-      async (command: string, args?: { enabled: boolean }) => {
+      async (
+        command: string,
+        args?: { hotkeys?: typeof defaultSettings.hotkeys },
+      ) => {
         if (command === "get_settings") return structuredClone(defaultSettings);
-        if (command === "get_update_status") return structuredClone(idleUpdate);
-        if (command === "set_hide_when_ads") return args?.enabled;
+        if (command === "update_hotkeys") return structuredClone(args?.hotkeys);
         return undefined;
       },
     );
     await startApp();
     document.querySelector<HTMLButtonElement>('[data-page="hotkeys"]')!.click();
     await vi.waitFor(() =>
-      expect(document.querySelector("#hide-when-ads")).not.toBeNull(),
+      expect(
+        document.querySelector('[data-hotkey="toggleAds"]'),
+      ).not.toBeNull(),
     );
-    const toggle = document.querySelector<HTMLInputElement>("#hide-when-ads")!;
-    expect(toggle.checked).toBe(false);
-    toggle.checked = true;
-    toggle.dispatchEvent(new Event("change", { bubbles: true }));
-    await vi.waitFor(() =>
-      expect(mocks.invoke).toHaveBeenCalledWith("set_hide_when_ads", {
-        enabled: true,
-      }),
-    );
+    document
+      .querySelector<HTMLButtonElement>('[data-hotkey="toggleAds"]')!
+      .click();
     await vi.waitFor(() =>
       expect(
-        document.querySelector<HTMLInputElement>("#hide-when-ads")?.checked,
-      ).toBe(true),
+        document.querySelector(
+          '[data-hotkey="toggleAds"][aria-pressed="true"]',
+        ),
+      ).not.toBeNull(),
     );
-  });
-
-  it("restores the ADS toggle and reports an enable error", async () => {
-    mocks.invoke.mockImplementation(async (command: string) => {
-      if (command === "get_settings") return structuredClone(defaultSettings);
-      if (command === "get_update_status") return structuredClone(idleUpdate);
-      if (command === "set_hide_when_ads") throw "Mouse observer unavailable";
-      return undefined;
-    });
-    await startApp();
-    document.querySelector<HTMLButtonElement>('[data-page="hotkeys"]')!.click();
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "F6" }));
     await vi.waitFor(() =>
-      expect(document.querySelector("#hide-when-ads")).not.toBeNull(),
-    );
-    const toggle = document.querySelector<HTMLInputElement>("#hide-when-ads")!;
-    toggle.checked = true;
-    toggle.dispatchEvent(new Event("change", { bubbles: true }));
-    await vi.waitFor(() =>
-      expect(document.querySelector(".save-state")?.textContent).toContain(
-        "Mouse observer unavailable",
-      ),
+      expect(mocks.invoke).toHaveBeenCalledWith("update_hotkeys", {
+        hotkeys: { ...defaultSettings.hotkeys, toggleAds: "F6" },
+      }),
     );
     expect(
-      document.querySelector<HTMLInputElement>("#hide-when-ads")?.checked,
-    ).toBe(false);
+      document.querySelector('[data-hotkey="toggleAds"]')?.textContent,
+    ).toBe("F6");
   });
   it("uses a muted master switch when the overlay is disabled", async () => {
     mocks.invoke.mockImplementation(async (command: string) => {
@@ -185,7 +199,12 @@ describe("settings application", () => {
     await startApp();
 
     expect(document.querySelector("h1")?.textContent).toBe("Crosshair");
-    expect(updateCalls).toEqual(["listen", "get_update_status"]);
+    expect(updateCalls).toEqual([
+      "listen",
+      "listen",
+      "listen",
+      "get_update_status",
+    ]);
     expect(mocks.invoke).not.toHaveBeenCalledWith("start_update_check");
 
     resolveStatus?.(idleUpdate);
@@ -338,6 +357,7 @@ describe("settings application", () => {
           toggleCrosshair: "F2",
           closeApp: "Control+KeyQ",
           showSettings: "F4",
+          toggleAds: "F5",
         };
       }
       return undefined;
