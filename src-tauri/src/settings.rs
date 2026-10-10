@@ -122,10 +122,16 @@ pub struct HotkeySettings {
     pub toggle_crosshair: String,
     pub close_app: String,
     pub show_settings: String,
+    #[serde(default = "default_toggle_ads_hotkey")]
+    pub toggle_ads: String,
 }
 
 fn default_toggle_crosshair_hotkey() -> String {
     "F2".into()
+}
+
+fn default_toggle_ads_hotkey() -> String {
+    "F5".into()
 }
 
 impl Default for HotkeySettings {
@@ -134,6 +140,7 @@ impl Default for HotkeySettings {
             toggle_crosshair: default_toggle_crosshair_hotkey(),
             close_app: "F3".into(),
             show_settings: "F4".into(),
+            toggle_ads: default_toggle_ads_hotkey(),
         }
     }
 }
@@ -146,8 +153,10 @@ impl HotkeySettings {
             .map_err(|error| format!("Close app shortcut {error}"))?;
         let show_settings = canonical_optional_shortcut(&self.show_settings)
             .map_err(|error| format!("Show settings shortcut {error}"))?;
+        let toggle_ads = canonical_optional_shortcut(&self.toggle_ads)
+            .map_err(|error| format!("Hide when ADS shortcut {error}"))?;
 
-        let bindings = [&toggle_crosshair, &close_app, &show_settings];
+        let bindings = [&toggle_crosshair, &close_app, &show_settings, &toggle_ads];
         for (index, binding) in bindings.iter().enumerate() {
             if !binding.is_empty()
                 && bindings[index + 1..]
@@ -162,6 +171,7 @@ impl HotkeySettings {
             toggle_crosshair,
             close_app,
             show_settings,
+            toggle_ads,
         })
     }
 }
@@ -498,6 +508,13 @@ mod tests {
         }
         .validated();
         assert!(duplicate.is_err());
+
+        let ads_duplicate = HotkeySettings {
+            toggle_ads: "F2".into(),
+            ..HotkeySettings::default()
+        }
+        .validated();
+        assert!(ads_duplicate.is_err());
     }
 
     #[test]
@@ -545,6 +562,7 @@ mod tests {
             serde_json::from_str(r#"{"closeApp":"F3","showSettings":"F4"}"#).unwrap();
 
         assert_eq!(settings.toggle_crosshair, "F2");
+        assert_eq!(settings.toggle_ads, "F5");
     }
 
     #[test]

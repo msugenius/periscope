@@ -86,12 +86,13 @@ or persisted settings file.
 | <kbd>F2</kbd> | Enable or disable the crosshair overlay                         |
 | <kbd>F3</kbd> | Close periScope completely, including the overlay and tray icon |
 | <kbd>F4</kbd> | Open, restore, and focus Settings                               |
+| <kbd>F5</kbd> | Toggle Hide when ADS; while enabled, right mouse hold hides the crosshair |
 
 Use the **Hotkeys** page to record a key or key combination or clear individual
 bindings. Accepted changes take effect immediately and survive restarts.
 Duplicate, invalid, or unavailable shortcuts are rejected without replacing the
 previous working binding. **Reset hotkeys** restores
-<kbd>F2</kbd>/<kbd>F3</kbd>/<kbd>F4</kbd> without changing the crosshair.
+<kbd>F2</kbd>/<kbd>F3</kbd>/<kbd>F4</kbd>/<kbd>F5</kbd> without changing the crosshair or the current ADS mode.
 
 periScope runs one instance per Windows session. Launching it again leaves the
 existing overlay, Settings window, and tray icon untouched.

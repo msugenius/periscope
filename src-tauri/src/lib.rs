@@ -20,7 +20,7 @@ use std::{
     },
 };
 use tauri::{
-    AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder,
+    AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
@@ -167,8 +167,7 @@ fn set_hotkey_recording(recording: bool, state: State<'_, AppState>) {
     state.hotkeys.set_recording(recording);
 }
 
-#[tauri::command]
-fn set_hide_when_ads(enabled: bool, state: State<'_, AppState>) -> Result<bool, String> {
+fn apply_hide_when_ads(app: &AppHandle, state: &AppState, enabled: bool) -> Result<bool, String> {
     let mut settings = state
         .settings
         .lock()
@@ -189,7 +188,28 @@ fn set_hide_when_ads(enabled: bool, state: State<'_, AppState>) -> Result<bool, 
             None => format!("Could not save ADS setting: {error}"),
         });
     }
+    let _ = app.emit("hide-when-ads-changed", enabled);
     Ok(enabled)
+}
+
+#[tauri::command]
+fn set_hide_when_ads(
+    app: AppHandle,
+    enabled: bool,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    apply_hide_when_ads(&app, state.inner(), enabled)
+}
+
+fn toggle_ads(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let enabled = match state.settings.lock() {
+        Ok(settings) => !settings.hide_when_ads,
+        Err(_) => return,
+    };
+    if let Err(error) = apply_hide_when_ads(app, state.inner(), enabled) {
+        let _ = app.emit("hide-when-ads-error", error);
+    }
 }
 
 #[tauri::command]
@@ -310,6 +330,7 @@ pub fn run() {
                             HotkeyAction::ShowSettings => {
                                 let _ = show_settings(app);
                             }
+                            HotkeyAction::ToggleAds => toggle_ads(app),
                         }
                     }
                 })

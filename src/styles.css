@@ -664,8 +664,10 @@ h1 {
   max-width: 780px;
   padding: 19px;
 }
-.ads-card {
-  margin-top: 18px;
+.ads-status {
+  margin: 15px 2px 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 .hotkeys-card > .panel-heading {
   padding-bottom: 16px;
