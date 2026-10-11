@@ -221,7 +221,7 @@ impl HotkeyController {
             })
     }
 
-    fn set_error(&self, field: &str, error: String) {
+    pub(crate) fn set_error(&self, field: &str, error: String) {
         if let Ok(mut state) = self.state.lock() {
             state.errors.insert(field.into(), error);
         }

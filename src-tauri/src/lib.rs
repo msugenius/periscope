@@ -343,9 +343,12 @@ pub fn run() {
                 .app_config_dir()
                 .map_err(|error| format!("could not resolve the settings directory: {error}"))?
                 .join("settings.json");
-            let settings = load_settings(&settings_path);
+            let mut settings = load_settings(&settings_path);
+            let cleared_bindings = settings.hotkeys.clear_reserved_bindings();
+            if !cleared_bindings.is_empty() {
+                let _ = persist_settings(&settings_path, &settings);
+            }
             let overlay = OverlayController::start(settings.crosshair.clone());
-            let mut settings = settings;
             if settings.hide_when_ads && overlay.set_hide_when_ads(true).is_err() {
                 settings.hide_when_ads = false;
             }
@@ -360,6 +363,12 @@ pub fn run() {
             app.state::<AppState>()
                 .hotkeys
                 .register_startup(app.handle());
+            for (field, binding) in cleared_bindings {
+                app.state::<AppState>().hotkeys.set_error(
+                    field,
+                    format!("Saved shortcut '{binding}' was cleared because it conflicts with a system key. Choose another shortcut."),
+                );
+            }
             setup_tray(app.handle())
                 .map_err(|error| format!("could not create the system tray icon: {error}"))?;
             Ok(())

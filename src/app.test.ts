@@ -141,6 +141,37 @@ describe("settings application", () => {
       document.querySelector('[data-hotkey="toggleAds"]')?.textContent,
     ).toBe("F6");
   });
+
+  it("rejects Caps Lock while recording without replacing the active binding", async () => {
+    await startApp();
+    document.querySelector<HTMLButtonElement>('[data-page="hotkeys"]')!.click();
+    await vi.waitFor(() =>
+      expect(
+        document.querySelector('[data-hotkey="toggleAds"]'),
+      ).not.toBeNull(),
+    );
+    document
+      .querySelector<HTMLButtonElement>('[data-hotkey="toggleAds"]')!
+      .click();
+    await vi.waitFor(() =>
+      expect(
+        document.querySelector(
+          '[data-hotkey="toggleAds"][aria-pressed="true"]',
+        ),
+      ).not.toBeNull(),
+    );
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "CapsLock" }));
+    expect(mocks.invoke).not.toHaveBeenCalledWith(
+      "update_hotkeys",
+      expect.anything(),
+    );
+    expect(document.querySelector("#hotkey-status")?.textContent).toContain(
+      "Caps Lock",
+    );
+    expect(
+      document.querySelector('[data-hotkey="toggleAds"]')?.textContent,
+    ).toBe("Press shortcut...");
+  });
   it("uses a muted master switch when the overlay is disabled", async () => {
     mocks.invoke.mockImplementation(async (command: string) => {
       if (command === "get_settings") {
