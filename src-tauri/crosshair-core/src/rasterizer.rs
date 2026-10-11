@@ -1,15 +1,16 @@
-use crate::settings::CrosshairSettings;
+use crate::CrosshairSettings;
 
-pub(crate) const OVERLAY_SIZE: i32 = 256;
+pub const OVERLAY_SIZE: i32 = 256;
 
-pub(crate) fn rasterize(pixels: &mut [u32], settings: &CrosshairSettings) {
+pub fn rasterize(pixels: &mut [u32], settings: &CrosshairSettings) {
+    let settings = &settings.visual;
     let center = OVERLAY_SIZE / 2;
     let color = parse_color(&settings.color);
     let outline_color = parse_color(&settings.outline_color);
     let alpha = ((settings.opacity as u16 * 255) / 100) as u8;
     let half = settings.thickness / 2;
 
-    let mut arms = vec![
+    let mut arms = if settings.dot_only { vec![] } else { vec![
         (
             center - settings.gap - settings.length,
             center - half,
@@ -28,8 +29,8 @@ pub(crate) fn rasterize(pixels: &mut [u32], settings: &CrosshairSettings) {
             center - half + settings.thickness,
             center + settings.gap + settings.length,
         ),
-    ];
-    if !settings.t_style {
+    ] };
+    if !settings.dot_only && !settings.t_style {
         arms.push((
             center - half,
             center - settings.gap - settings.length,
@@ -55,7 +56,7 @@ pub(crate) fn rasterize(pixels: &mut [u32], settings: &CrosshairSettings) {
         fill_rect(pixels, left, top, right, bottom, color, alpha);
     }
 
-    if settings.center_dot {
+    if settings.dot_only || settings.center_dot {
         if settings.outline {
             fill_circle(
                 pixels,

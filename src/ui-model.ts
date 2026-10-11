@@ -1,7 +1,5 @@
 export type HotkeySettings = {
   toggleCrosshair: string;
-  closeApp: string;
-  showSettings: string;
   toggleAds: string;
 };
 
@@ -11,7 +9,26 @@ export type HotkeyErrors = Partial<
   Record<HotkeyName | "configuration", string>
 >;
 
-export type PresetId = "classic" | "dot" | "precision";
+export type PresetId = string;
+
+export type VisualSettings = {
+  color: string;
+  opacity: number;
+  length: number;
+  thickness: number;
+  gap: number;
+  centerDot: boolean;
+  dotSize: number;
+  tStyle: boolean;
+  dotOnly: boolean;
+  outline: boolean;
+  outlineThickness: number;
+  outlineColor: string;
+  xOffset: number;
+  yOffset: number;
+};
+
+export type Preset = { id: PresetId; name: string; settings: VisualSettings };
 
 export type Settings = {
   hideWhenAds: boolean;
@@ -24,19 +41,21 @@ export type Settings = {
   centerDot: boolean;
   dotSize: number;
   tStyle: boolean;
+  dotOnly: boolean;
   outline: boolean;
   outlineThickness: number;
   outlineColor: string;
   xOffset: number;
   yOffset: number;
   activePreset: PresetId;
+  presets: Preset[];
   hotkeys: HotkeySettings;
   hotkeyErrors: HotkeyErrors;
 };
 
 export type CrosshairSettings = Omit<
   Settings,
-  "activePreset" | "hotkeys" | "hotkeyErrors" | "hideWhenAds"
+  "activePreset" | "presets" | "hotkeys" | "hotkeyErrors" | "hideWhenAds"
 >;
 export type CrosshairKey = keyof CrosshairSettings;
 
@@ -94,17 +113,12 @@ export function reservedShortcutReason(value: string) {
   const tokens = value.split("+");
   const key = tokens.pop()?.toLowerCase();
   const modifiers = tokens.map((token) => token.toLowerCase());
-  if (["capslock", "numlock", "scrolllock"].includes(key ?? ""))
-    return "Caps Lock, Num Lock, and Scroll Lock control keyboard state and cannot be global shortcuts.";
-  if (modifiers.includes("super"))
-    return "Windows-key shortcuts are reserved by the system.";
   if (
-    (modifiers.includes("alt") && ["tab", "f4"].includes(key ?? "")) ||
-    (modifiers.includes("control") &&
-      modifiers.includes("alt") &&
-      key === "delete")
+    modifiers.includes("control") &&
+    modifiers.includes("alt") &&
+    key === "delete"
   )
-    return "That shortcut is reserved by the operating system.";
+    return "Ctrl+Alt+Delete cannot be observed outside the secure Windows screen.";
   return null;
 }
 

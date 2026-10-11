@@ -4,7 +4,7 @@ use std::sync::{Arc, OnceLock, RwLock};
 #[cfg(windows)]
 mod platform {
     use super::*;
-    use crate::rasterizer::{OVERLAY_SIZE, rasterize};
+    use crosshair_core::{OVERLAY_SIZE, rasterize};
     use std::{
         ffi::c_void,
         mem, ptr,
@@ -219,8 +219,8 @@ mod platform {
             let screen_width = GetSystemMetrics(SM_CXSCREEN);
             let screen_height = GetSystemMetrics(SM_CYSCREEN);
             let destination = POINT {
-                x: (screen_width - OVERLAY_SIZE) / 2 + settings.x_offset,
-                y: (screen_height - OVERLAY_SIZE) / 2 + settings.y_offset,
+                x: (screen_width - OVERLAY_SIZE) / 2 + settings.visual.x_offset,
+                y: (screen_height - OVERLAY_SIZE) / 2 + settings.visual.y_offset,
             };
             let source = POINT { x: 0, y: 0 };
             let size = SIZE {
@@ -360,10 +360,8 @@ impl OverlayController {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        rasterizer::{OVERLAY_SIZE, rasterize},
-        settings::CrosshairSettings,
-    };
+    use crate::settings::{CrosshairSettings, VisualSettings};
+    use crosshair_core::{OVERLAY_SIZE, rasterize};
 
     fn pixels() -> Vec<u32> {
         vec![0; (OVERLAY_SIZE * OVERLAY_SIZE) as usize]
@@ -376,7 +374,10 @@ mod tests {
     #[test]
     fn rasterizes_fill_and_outline_at_exact_geometry_boundaries() {
         let settings = CrosshairSettings {
-            center_dot: false,
+            visual: VisualSettings {
+                center_dot: false,
+                ..VisualSettings::default()
+            },
             ..CrosshairSettings::default()
         };
         let mut output = pixels();
@@ -393,9 +394,12 @@ mod tests {
     #[test]
     fn t_style_removes_only_the_upper_arm() {
         let settings = CrosshairSettings {
-            t_style: true,
-            center_dot: false,
-            outline: false,
+            visual: VisualSettings {
+                t_style: true,
+                center_dot: false,
+                outline: false,
+                ..VisualSettings::default()
+            },
             ..CrosshairSettings::default()
         };
         let mut output = pixels();
@@ -406,12 +410,34 @@ mod tests {
     }
 
     #[test]
+    fn dot_style_draws_a_dot_without_arms() {
+        let settings = CrosshairSettings {
+            visual: VisualSettings {
+                dot_only: true,
+                dot_size: 4,
+                outline: false,
+                ..VisualSettings::default()
+            },
+            ..CrosshairSettings::default()
+        };
+        let mut output = pixels();
+        rasterize(&mut output, &settings);
+
+        assert_ne!(pixel(&output, 128, 128), 0);
+        assert_eq!(pixel(&output, 115, 128), 0);
+        assert_eq!(pixel(&output, 128, 115), 0);
+    }
+
+    #[test]
     fn premultiplies_transparency_and_falls_back_for_malformed_colors() {
         let transparent = CrosshairSettings {
-            color: "#FF0000".into(),
-            opacity: 50,
-            center_dot: false,
-            outline: false,
+            visual: VisualSettings {
+                color: "#FF0000".into(),
+                opacity: 50,
+                center_dot: false,
+                outline: false,
+                ..VisualSettings::default()
+            },
             ..CrosshairSettings::default()
         };
         let mut transparent_output = pixels();
@@ -419,9 +445,12 @@ mod tests {
         assert_eq!(pixel(&transparent_output, 115, 128), 0x7f7f_0000);
 
         let malformed = CrosshairSettings {
-            color: "bad".into(),
-            center_dot: false,
-            outline: false,
+            visual: VisualSettings {
+                color: "bad".into(),
+                center_dot: false,
+                outline: false,
+                ..VisualSettings::default()
+            },
             ..CrosshairSettings::default()
         };
         let mut malformed_output = pixels();
@@ -432,11 +461,14 @@ mod tests {
     #[test]
     fn clips_rectangles_that_extend_beyond_the_pixel_buffer() {
         let settings = CrosshairSettings {
-            length: 200,
-            gap: 0,
-            thickness: 4,
-            center_dot: false,
-            outline: false,
+            visual: VisualSettings {
+                length: 200,
+                gap: 0,
+                thickness: 4,
+                center_dot: false,
+                outline: false,
+                ..VisualSettings::default()
+            },
             ..CrosshairSettings::default()
         };
         let mut output = pixels();
@@ -449,8 +481,11 @@ mod tests {
     #[test]
     fn rasterizes_center_dot_as_an_anti_aliased_circle() {
         let settings = CrosshairSettings {
-            dot_size: 5,
-            outline: false,
+            visual: VisualSettings {
+                dot_size: 5,
+                outline: false,
+                ..VisualSettings::default()
+            },
             ..CrosshairSettings::default()
         };
         let mut output = pixels();
