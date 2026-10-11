@@ -43,13 +43,12 @@ describe("UI model helpers", () => {
     expect(shortcutFromEvent(event)).toBe("Control+Alt+Shift+KeyK");
   });
 
-  it("identifies system shortcuts that would interrupt normal keyboard behavior", () => {
-    expect(reservedShortcutReason("CapsLock")).toContain("keyboard state");
-    expect(reservedShortcutReason("Control+CapsLock")).toContain(
-      "keyboard state",
-    );
-    expect(reservedShortcutReason("Alt+Tab")).toContain("operating system");
-    expect(reservedShortcutReason("Super+KeyR")).toContain("reserved");
+  it("allows passive system shortcuts except secure attention", () => {
+    expect(reservedShortcutReason("CapsLock")).toBeNull();
+    expect(reservedShortcutReason("Control+CapsLock")).toBeNull();
+    expect(reservedShortcutReason("Alt+Tab")).toBeNull();
+    expect(reservedShortcutReason("Super+KeyR")).toBeNull();
+    expect(reservedShortcutReason("Control+Alt+Delete")).toContain("secure");
     expect(reservedShortcutReason("Control+F6")).toBeNull();
   });
 });
