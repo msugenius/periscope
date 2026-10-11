@@ -4,6 +4,7 @@ import {
   displayHotkey,
   escapeHtml,
   isModifierCode,
+  reservedShortcutReason,
   shortcutFromEvent,
   type CrosshairKey,
   type CrosshairSettings,
@@ -159,7 +160,7 @@ function renderHotkeysPage() {
       <span class="global-badge">${icon("keyboard")} System-wide</span>
     </div>
     <section class="panel hotkeys-card">
-      <div class="panel-heading"><div><h2>Shortcut bindings</h2><p>Select a binding to record it, or clear it to leave the action unassigned.</p></div>${icon("keyboard")}</div>
+      <div class="panel-heading"><div><h2>Shortcut bindings</h2><p>Select a binding to record it, or clear it to leave the action unassigned. Lock keys and system shortcuts cannot be assigned.</p></div>${icon("keyboard")}</div>
       ${configurationError ? `<div class="hotkey-banner" role="alert">${escapeHtml(configurationError)}</div>` : ""}
       <div class="hotkey-list">
         ${hotkeyRow("toggleCrosshair", "Toggle crosshair", "Enable or disable the crosshair overlay without opening Settings.", "F2")}
@@ -315,6 +316,16 @@ async function handleRecordingKeyDown(event: KeyboardEvent) {
 
   const key = recordingHotkey;
   const proposed = shortcutFromEvent(event);
+  const reservedReason = reservedShortcutReason(proposed);
+  if (reservedReason) {
+    hotkeyStatus = reservedReason;
+    hotkeyStatusError = true;
+    renderShell();
+    document
+      .querySelector<HTMLButtonElement>(`[data-hotkey="${key}"]`)
+      ?.focus();
+    return;
+  }
   const duplicate = Object.entries(settings.hotkeys).some(
     ([otherKey, shortcut]) =>
       otherKey !== key && shortcut.toLowerCase() === proposed.toLowerCase(),

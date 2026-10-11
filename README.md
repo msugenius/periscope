@@ -91,7 +91,10 @@ or persisted settings file.
 Use the **Hotkeys** page to record a key or key combination or clear individual
 bindings. Accepted changes take effect immediately and survive restarts.
 Duplicate, invalid, or unavailable shortcuts are rejected without replacing the
-previous working binding. **Reset hotkeys** restores
+previous working binding. Lock keys (Caps Lock, Num Lock, Scroll Lock) and
+system-reserved shortcuts cannot be assigned. If an older saved binding uses
+one of them, periScope clears that binding on startup and shows why in Settings.
+**Reset hotkeys** restores
 <kbd>F2</kbd>/<kbd>F3</kbd>/<kbd>F4</kbd>/<kbd>F5</kbd> without changing the crosshair or the current ADS mode.
 
 periScope runs one instance per Windows session. Launching it again leaves the
