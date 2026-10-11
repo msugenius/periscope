@@ -146,6 +146,21 @@ impl Default for HotkeySettings {
 }
 
 impl HotkeySettings {
+    pub fn clear_reserved_bindings(&mut self) -> Vec<(&'static str, String)> {
+        let mut cleared = Vec::new();
+        for (field, binding) in [
+            ("toggleCrosshair", &mut self.toggle_crosshair),
+            ("closeApp", &mut self.close_app),
+            ("showSettings", &mut self.show_settings),
+            ("toggleAds", &mut self.toggle_ads),
+        ] {
+            if reserved_shortcut_reason(binding).is_some() {
+                cleared.push((field, std::mem::take(binding)));
+            }
+        }
+        cleared
+    }
+
     pub fn validated(self) -> Result<Self, String> {
         let toggle_crosshair = canonical_optional_shortcut(&self.toggle_crosshair)
             .map_err(|error| format!("Toggle crosshair shortcut {error}"))?;
@@ -185,6 +200,9 @@ fn canonical_optional_shortcut(value: &str) -> Result<String, String> {
 }
 
 fn canonical_shortcut(value: &str) -> Result<String, String> {
+    if let Some(reason) = reserved_shortcut_reason(value) {
+        return Err(reason.into());
+    }
     let tokens = value.split('+').map(str::trim).collect::<Vec<_>>();
     if tokens.is_empty() || tokens.iter().any(|token| token.is_empty()) {
         return Err("is empty or incomplete.".into());
@@ -236,6 +254,33 @@ fn canonical_shortcut(value: &str) -> Result<String, String> {
     Ok(canonical.join("+"))
 }
 
+fn reserved_shortcut_reason(value: &str) -> Option<&'static str> {
+    let tokens = value.split('+').map(str::trim).collect::<Vec<_>>();
+    let (key, modifiers) = tokens.split_last()?;
+    let key = key.to_ascii_uppercase();
+    if matches!(key.as_str(), "CAPSLOCK" | "NUMLOCK" | "SCROLLLOCK") {
+        return Some(
+            "cannot use Caps Lock, Num Lock, or Scroll Lock because they control keyboard state.",
+        );
+    }
+    let has = |name| {
+        modifiers
+            .iter()
+            .any(|token| modifier_name(token) == Some(name))
+    };
+    if has("Super") {
+        return Some(
+            "cannot use the Windows key because its shortcuts are reserved by the system.",
+        );
+    }
+    if (has("Alt") && matches!(key.as_str(), "TAB" | "F4"))
+        || (has("Control") && has("Alt") && key == "DELETE")
+    {
+        return Some("is reserved by the operating system.");
+    }
+    None
+}
+
 fn modifier_name(value: &str) -> Option<&'static str> {
     match value.trim().to_ascii_uppercase().as_str() {
         "CTRL" | "CONTROL" | "CMDORCTRL" | "COMMANDORCONTROL" => Some("Control"),
@@ -284,7 +329,6 @@ fn canonical_key(value: &str) -> Result<String, String> {
         "ARROWLEFT" => "ArrowLeft",
         "ARROWRIGHT" => "ArrowRight",
         "BACKSPACE" => "Backspace",
-        "CAPSLOCK" => "CapsLock",
         "DELETE" => "Delete",
         "END" => "End",
         "ENTER" => "Enter",
@@ -521,7 +565,7 @@ mod tests {
     fn hotkey_validation_handles_supported_keys_and_incomplete_shortcuts() {
         for (input, expected) in [
             ("alt+1", "Alt+Digit1"),
-            ("super+numpad7", "Super+Numpad7"),
+            ("alt+numpad7", "Alt+Numpad7"),
             ("ArrowUp", "ArrowUp"),
             ("pageDown", "PageDown"),
         ] {
@@ -554,6 +598,43 @@ mod tests {
         .validated()
         .unwrap();
         assert!(unset.close_app.is_empty());
+    }
+
+    #[test]
+    fn reserved_shortcuts_are_rejected_and_legacy_bindings_are_cleared_individually() {
+        for binding in [
+            "CapsLock",
+            "Control+CapsLock",
+            "NumLock",
+            "ScrollLock",
+            "Super+KeyR",
+            "Alt+Tab",
+            "Alt+F4",
+            "Control+Alt+Delete",
+        ] {
+            assert!(
+                HotkeySettings {
+                    toggle_ads: binding.into(),
+                    ..HotkeySettings::default()
+                }
+                .validated()
+                .is_err(),
+                "{binding}"
+            );
+        }
+
+        let mut saved = HotkeySettings {
+            toggle_ads: "CapsLock".into(),
+            close_app: "Control+F3".into(),
+            ..HotkeySettings::default()
+        };
+        assert_eq!(
+            saved.clear_reserved_bindings(),
+            vec![("toggleAds", "CapsLock".into())]
+        );
+        assert!(saved.toggle_ads.is_empty());
+        assert_eq!(saved.close_app, "Control+F3");
+        assert!(saved.validated().is_ok());
     }
 
     #[test]

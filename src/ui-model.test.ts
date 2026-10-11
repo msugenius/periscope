@@ -4,6 +4,7 @@ import {
   escapeHtml,
   isModifierCode,
   normalizeShortcut,
+  reservedShortcutReason,
   shortcutFromEvent,
 } from "./ui-model";
 
@@ -40,5 +41,15 @@ describe("UI model helpers", () => {
     });
 
     expect(shortcutFromEvent(event)).toBe("Control+Alt+Shift+KeyK");
+  });
+
+  it("identifies system shortcuts that would interrupt normal keyboard behavior", () => {
+    expect(reservedShortcutReason("CapsLock")).toContain("keyboard state");
+    expect(reservedShortcutReason("Control+CapsLock")).toContain(
+      "keyboard state",
+    );
+    expect(reservedShortcutReason("Alt+Tab")).toContain("operating system");
+    expect(reservedShortcutReason("Super+KeyR")).toContain("reserved");
+    expect(reservedShortcutReason("Control+F6")).toBeNull();
   });
 });

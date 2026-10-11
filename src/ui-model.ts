@@ -90,6 +90,24 @@ export function shortcutFromEvent(event: KeyboardEvent) {
   return normalizeShortcut(parts.join("+"));
 }
 
+export function reservedShortcutReason(value: string) {
+  const tokens = value.split("+");
+  const key = tokens.pop()?.toLowerCase();
+  const modifiers = tokens.map((token) => token.toLowerCase());
+  if (["capslock", "numlock", "scrolllock"].includes(key ?? ""))
+    return "Caps Lock, Num Lock, and Scroll Lock control keyboard state and cannot be global shortcuts.";
+  if (modifiers.includes("super"))
+    return "Windows-key shortcuts are reserved by the system.";
+  if (
+    (modifiers.includes("alt") && ["tab", "f4"].includes(key ?? "")) ||
+    (modifiers.includes("control") &&
+      modifiers.includes("alt") &&
+      key === "delete")
+  )
+    return "That shortcut is reserved by the operating system.";
+  return null;
+}
+
 export function normalizeShortcut(value: string) {
   const aliases: Record<string, string> = {
     alt: "Alt",
